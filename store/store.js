@@ -60,7 +60,7 @@ export const setTxid = (txid) => ({ type: SET_TXID, payload: txid });
 export const setMessageToSign = (message) => ({type: 'SET_MESSAGE', payload: message})
 export const setTxToSign = (tx) => ({type: 'SET_TX_TOSIGN', payload: tx})
 export const setSignRequest = (flag) => ({type: 'SET_SIGNREQUEST', payload: flag})
-export const setConfirmationPasswordValue (password) =>({type: 'SET_CONFIRMATIONPASSWORD', payload:password})
+export const setConfirmationPasswordValue = (password) =>({type: 'SET_CONFIRMATIONPASSWORD', payload:password})
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -80,7 +80,7 @@ const rootReducer = (state = initialState, action) => {
       return { ...state, wallet: action.payload };
     case SET_ENCRYPTED_SEED:
       return { ...state, encryptedSeed: action.payload };
-    case SET_CONFIRMATION_WORD:
+    case 'SET_CONFIRMATION_WORD:'
       return { ...state, confirmationWord: action.payload };
     case SET_SELECTED_WORD:
       return { ...state, selectedWord: action.payload };

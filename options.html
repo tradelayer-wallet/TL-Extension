@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Options</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 24px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Extension Settings</h1>
+    <label for="someSetting">Enable Feature:</label>
+    <input type="checkbox" id="someSetting" name="someSetting">
+    <br><br>
+    <button id="saveButton">Save Settings</button>
+
+    <script>
+        // Load saved settings (if any)
+        document.addEventListener('DOMContentLoaded', function() {
+            const someSetting = localStorage.getItem('someSetting') === 'true';
+            document.getElementById('someSetting').checked = someSetting;
+        });
+
+        // Save settings when user clicks the save button
+        document.getElementById('saveButton').addEventListener('click', function() {
+            const someSetting = document.getElementById('someSetting').checked;
+            localStorage.setItem('someSetting', someSetting);
+            alert('Settings saved!');
+        });
+    </script>
+</body>
+</html>

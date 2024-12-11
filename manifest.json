@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "TradeLayer Wallet Extension",
+  "version": "1.0",
+  "description": "A wallet extension for DeFi on LTC, BTC, DOGE with TradeLayer Protocol",
+  "background": {
+    "service_worker": "background/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "run_at": "document_start"
+    }
+  ],
+   "permissions": [
+    "storage",
+    "tabs",
+    "activeTab",
+    "webRequest",
+    "scripting"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["window.js", "node_modules/events/events.js",
+        "node_modules/eth-rpc-errors/dist/error.js",
+        "node_modules/eth-rpc-errors/dist/index.js",
+        "readyPromise.js"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
+  "action": {
+    "default_popup": "./popup/popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "options_page": "./options.html"
+}

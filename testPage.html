@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wallet Interaction Example</title>
+</head>
+<body>
+
+  <h1>Wallet Interaction Example</h1>
+  <button id="connectWalletButton">Connect Wallet</button>
+  <p>Connected Address: <span id="connectedAddress">Not connected</span></p>
+
+  <button id="signMessageButton" disabled>Sign Message</button>
+  <p>Signed Message: <span id="signedMessage"></span></p>
+
+  <script>
+    // Check if the wallet is available
+    if (window.myWallet) {
+      // Handle account changes
+      window.myWallet.on('accountsChanged', (accounts) => {
+        console.log('Accounts changed:', accounts);
+        document.getElementById('connectedAddress').innerText = accounts[0] || 'Not connected';
+        document.getElementById('signMessageButton').disabled = !accounts[0];
+      });
+
+      // Handle network changes
+      window.myWallet.on('networkChanged', (network) => {
+        console.log('Network changed:', network);
+      });
+    }
+
+    // Connect Wallet Button
+    document.getElementById('connectWalletButton').addEventListener('click', async () => {
+      console.log('window.myWallet:', window.myWallet);
+      if (window.myWallet) {
+        try {
+          const accounts = await window.myWallet.requestAccounts();
+          console.log('Connected accounts:', accounts);
+          document.getElementById('connectedAddress').innerText = accounts;
+          document.getElementById('signMessageButton').disabled = false;
+        } catch (error) {
+          console.error('Failed to connect wallet:', error);
+        }
+      } else {
+        alert('Wallet extension not detected');
+      }
+    });
+
+    // Sign Message Button
+    document.getElementById('signMessageButton').addEventListener('click', async () => {
+      if (window.myWallet) {
+        try {
+          const message = "Hello, World!";
+          const signature = await window.myWallet.sendRequest('signMessage', { message });
+          console.log('Signed message:', signature);
+          document.getElementById('signedMessage').innerText = signature;
+        } catch (error) {
+          console.error('Failed to sign message:', error);
+        }
+      } else {
+        alert('Wallet extension not detected');
+      }
+    });
+
+    document.addEventListener('signResult', async (signature)=>{
+      document.getElementById('signedMessage').innerText = signature;
+    })
+
+    
+
+  </script>
+</body>
+</html>

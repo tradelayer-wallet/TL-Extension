@@ -1,0 +1,126 @@
+import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom/client';
+import { Provider, useSelector, useDispatch } from 'react-redux';
+import store from '../store/store';
+import '../styles.css';
+import SeedPhraseGeneration from '../components/SeedPhraseGeneration';
+import PasswordSetup from '../components/PasswordSetup';
+import PasswordPrompt from '../components/PasswordPrompt';
+import SeedPhraseConfirmation from '../components/SeedPhraseConfirmation';
+import SeedPhraseImport from '../components/SeedPhraseImport';
+import ShowSeedPhrase from '../components/showSeedPhrase';  
+import Balances from '../components/balance'
+import Send from '../components/Send'
+import Lock from '../components/lock'
+import Withdraw from '../components/withdraw'
+import Settings from '../components/settings'
+import ExposeSeed from '../components/ExposeSeed'
+import SignTransaction from '../components/SignTransaction'
+import ShowTx from '../components/ShowTx'
+import ResetPass from '../components/ResetPass'
+import { setStep, setSeedPhrase, setMessageToSign, setTxToSign, setSignRequest } from '../store/store'; // Import necessary actions
+
+const App = () => {
+  const [passwordStep, setPasswordStep] = useState(false);
+  const dispatch = useDispatch();
+  // Redux step state
+  const step = useSelector((state) => state.step); // Access step from Redux store
+  const address = useSelector((state) => state.address);
+  useEffect(() => {
+    const queryString = new URLSearchParams(window.location.search);
+    const stepParam = queryString.get('step');
+    const messageParam = queryString.get('message')
+    const decodedMessage = messageParam ? decodeURIComponent(messageParam) : null;
+
+    console.log('Query string in popup:', window.location.search);
+    console.log('Step param:', stepParam);
+    console.log('Message param:', decodedMessage);
+   
+
+    if (stepParam) {
+      const initialStep = parseInt(stepParam, 10);
+      dispatch(setSignRequest(true));
+      if (decodedMessage) {
+        localStorage.setItem('messageToSign', decodedMessage); // Save to local storage
+      }
+      dispatch(setStep(initialStep));
+      console.log(`Popup initialized with step: ${initialStep}`);
+    } else {
+      const encryptedSeed = localStorage.getItem('encryptedSeed');
+      if (encryptedSeed) {
+        dispatch(setStep(6)); // Password prompt
+      } else {
+        dispatch(setStep(1)); // Seed generation
+      }
+    }
+  }, [dispatch]);
+
+
+  useEffect(() => {
+    console.log('Current step after dispatch:', step);
+  }, [step]);  // This will log the new step value whenever it changes
+
+  const handleGenerateSeed = (generatedSeed) => {
+    dispatch(setSeedPhrase(generatedSeed));  // Store the generated seed in Redux
+    dispatch(setStep(2));  // Move to the next step
+  };
+
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log('inside listener in popup.js '+JSON.stringify(message))
+    if (message.type === 'getAccount') {
+      const accounts = []
+      accounts.push(address)
+      sendResponse({ success: true, accounts });
+    }
+
+    if (message.type === 'signTxRequest') {
+      const { messageToSign } = message.payload;
+
+      // Store the message and set the signing step
+      dispatch(setTxToSign(messageToSign));
+      dispatch(setSignRequest(true));
+      dispatch(setStep(13)); // Go to the signing page
+      sendResponse({ success: true });
+    }
+  });
+
+  return (
+    <div className="app-container">
+      <div className="logo">
+        <img src="../images/icon128.png" alt="SidePit Logo" />
+      </div>
+      <div>
+        {passwordStep ? (
+          <PasswordPrompt onPasswordSubmit={handlePasswordSubmit} />
+        ) : (
+          <>
+            {step === 1 && <SeedPhraseGeneration />}
+            {step === 2 && <ShowSeedPhrase />}
+            {step === 3 && <SeedPhraseConfirmation />}
+            {step === 4 && <PasswordSetup />}
+            {step === 5 && <SeedPhraseImport />}
+            {step === 6 && <PasswordPrompt/>}
+            {step === 7 && <Balances />}
+            {step === 8 && <Send />}
+            {step === 9 && <Lock />}
+            {step === 10 && <Withdraw />}
+            {step === 11 && <Settings />}
+            {step === 12 && <ExposeSeed />}
+            {step === 13 && <SignTransaction/>}
+            {step === 14 && <ShowTx />}
+            {step === 15 && <ResetPass />}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <Provider store={store}>
+    <App />
+  </Provider>
+);
+
+export default App;

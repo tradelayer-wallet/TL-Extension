@@ -1,0 +1,326 @@
+/* General Styles */
+body {
+  font-family: Arial, sans-serif;
+  background-color: white;
+  color: #333;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  margin: 0;
+}
+
+.app-container {
+  width: 80%; /* Width should be 150% more than default */
+  max-width: 500px; /* Optional: You can set the max-width if you want */
+  min-width: 300px;
+  margin: 10px auto;
+  background: #fff;
+  padding: 80px 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Logo Styling */
+.logo {
+  width: 80%;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.logo img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Button Styling */
+button {
+  background-color: #ff6f00; /* SidePit orange */
+  color: white;
+  padding: 15px;
+  border: none;
+  cursor: pointer;
+  font-size: 18px;
+  border-radius: 10px;
+  width: 100%;  /* Makes the button expand to full width */
+  margin-top: 20px;
+}
+
+button:hover {
+  background-color: #ff4500; /* Darker orange */
+}
+
+button:focus {
+  outline: none;
+  border: 2px solid #ff6f00;
+}
+
+/* Input Styling */
+input {
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  width: 100%;
+  font-size: 16px;
+}
+
+input[type="password"] {
+  font-family: 'Courier', monospace;
+}
+
+input:focus {
+  outline: none;
+  border: 2px solid #ff6f00;
+}
+
+/* Container for sections */
+.seed-phrase-generation, .verify-seed-phrase, .password-setup {
+  margin: 20px;
+  padding: 20px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  width: 100%;
+}
+
+/* Seed Phrase Import Section */
+.seed-phrase-import {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 3 columns per row */
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.seed-phrase-import input {
+  padding: 10px;
+  font-size: 16px;
+  text-align: center;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+button {
+  background-color: #ff6f00; /* SidePit orange */
+  color: white;
+  padding: 10px 20px;
+  font-size: 16px;
+  width: 100%;
+  margin-top: 20px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #ff4500; /* Darker orange */
+}
+
+button:focus {
+  outline: none;
+  border: 2px solid #ff6f00;
+}
+
+h2 {
+  text-align: center;
+  font-size: 20px;
+  color: #ff6f00;
+}
+
+h1 {
+  text-align: center;
+  font-size: 24px;
+}
+
+
+/* Show Seed Phrase Section */
+.seed-phrase {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr); /* 4 columns */
+  gap: 8px; /* Reduced gap between words */
+  justify-items: center; /* Center content in each cell */
+  margin-top: 20px; /* Margin above the container */
+  margin-left: 5px; /* Reduced left margin */
+  margin-right: 5px; /* Reduced right margin */
+  max-width: 90%; /* Shrink width for better fit */
+  width: 100%;
+}
+
+.seed-word {
+  background-color: #f4f4f4;
+  padding: 15px 10px;  /* Increased padding for a larger placard effect */
+  font-family: 'Roboto', sans-serif;
+  font-size: 18px;  /* Larger font size */
+  font-weight: bold;
+  text-align: center;  /* Center the text inside each placard */
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  width: 75%;
+}
+
+.seed-word:nth-child(4n+1) {
+  margin-left: 0;  /* Remove left margin for the first word of each row */
+}
+
+/* Additional styling for the 'Next' button */
+.next-step-button {
+  background-color: #ff6f00;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  font-size: 16px;
+  cursor: pointer;
+  width: 90%;
+  margin-top: 20px;
+  margin-left: auto;  /* Centers the button */
+  margin-right: auto; /* Centers the button */
+  display: block;     /* Makes the button a block-level element so it can be centered */
+}
+
+/* Styling for the balance container */
+.balance-container {
+  width: 80%; /* 80% width */
+  max-width: 500px;
+  min-width: 300px;
+  background: url('./images/slate_texture.png') no-repeat center center; /* Use your generated image */
+  background-size: cover;  /* Ensure the background scales to fill the container */
+  padding: 20px;
+  border-radius: 20px;  /* Increased border-radius for a rounded rectangle effect */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+
+
+.next-step-button:hover {
+  background-color: #ff4500;
+}
+
+/* General styling for the container */
+.container {
+  font-family: Arial, sans-serif;
+  padding: 20px;
+  background-color: #1a1a1a;
+  color: #fff;
+  border-radius: 15px;
+  width: 300px;
+  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
+}
+
+/* Heading style */
+.container h2 {
+  font-size: 1.6rem;
+  margin-bottom: 20px;
+  color: #f8c800;
+  text-align: center;
+}
+
+/* Styling for contract ticker */
+.contract-ticker {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #f8c800;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+/* Styling for PNL and ROE with color change based on value */
+.pnls {
+  font-size: 2.5rem;
+  font-weight: bold;
+  color: green;
+  text-align: center;
+}
+
+.pnls-negative {
+  color: red;
+}
+
+.roe {
+  font-size: 1.2rem;
+  color: #fff;
+  text-align: center;
+  margin-top: 10px;
+}
+
+/* Style for the buttons */
+button {
+  width: 100%;
+  padding: 12px;
+  margin: 8px 0;
+  background-color: #f8c800;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #ffb600;
+}
+
+/* Position for the settings button */
+.settings-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #f8c800;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  padding: 10px;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.settings-button:hover {
+  background-color: #ffb600;
+}
+
+/* Address and balance text styling */
+.balance {
+  font-size: 1rem;
+  color: #fee;
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.address{
+  font-size: 1rem;
+  color: #fee;
+  text-align: center;
+  margin-bottom: 10px;
+} 
+
+/* For the balance display buttons */
+.buttons-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  margin-top: 20px;
+  gap: 10px;
+}
+
+button {
+  font-size: 1.1rem;
+  background-color: #ff6f00;  /* SidePit orange */
+  padding: 12px;
+  border-radius: 10px;
+  width: 100%;
+  margin-top: 10px;
+}
+
+button:hover {
+  background-color: #ff4500; /* Darker orange */
+}
+
+button:focus {
+  outline: none;
+  border: 2px solid #ff6f00;
+}

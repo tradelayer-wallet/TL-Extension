@@ -1,0 +1,75 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SidePit Feed</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>SidePit Market Data Feed</h1>
+        <div id="feed-data">Waiting for feed...</div>
+    </div>
+    <script src="popup.js"></script>
+    <div class="container">
+        <div class="header">
+            <h1>Account 1</h1>
+        </div>
+        <div class="panel">
+            <div class="payment">
+                <div class="payment-header">
+                    <span>You Pay</span>
+                    <span id="you-pay-amount">$0</span>
+                </div>
+                <div class="input-group">
+                    <input type="number" id="you-pay-input" placeholder="0" />
+                    <select id="you-pay-currency">
+                        <option value="SOL">SOL</option>
+                        <!-- Add more currencies as needed -->
+                    </select>
+                </div>
+            </div>
+            <div class="switch-button">
+                <button id="switch-currencies">↔️</button>
+            </div>
+            <div class="payment">
+                <div class="payment-header">
+                    <span>You Receive</span>
+                    <span id="you-receive-amount">$0</span>
+                </div>
+                <div class="input-group">
+                    <input type="number" id="you-receive-input" placeholder="0" />
+                    <select id="you-receive-currency">
+                        <option value="USDC">USDC</option>
+                        <!-- Add more currencies as needed -->
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="actions">
+            <button id="confirm-button">Confirm</button>
+        </div>
+    </div>
+    <script src="popup.js"></script>
+</body>
+</html>
+
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SidePit Wallet</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="tabs-container">
+      <div id="tab-selector"></div>
+      <div id="tab-content"></div>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

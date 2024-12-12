@@ -4,13 +4,13 @@ import { setSeedPhrase } from '../store/actions'; // Make sure you have an actio
 import { useHistory } from 'react-router-dom';
 
 const ImportSeedPhrase = () => {
-  const [seedPhrase, setSeedPhraseInput] = useState('');
+  const [seedPhrase, setSeedPhrase] = useState('');
   const [error, setError] = useState('');
   const dispatch = useDispatch();
   const history = useHistory();
 
   const handleSeedPhraseChange = (e) => {
-    setSeedPhraseInput(e.target.value);
+    setSeedPhrase(e.target.value);
   };
 
   const handleSubmit = () => {
@@ -21,7 +21,7 @@ const ImportSeedPhrase = () => {
     }
 
     // Dispatch the seed phrase to Redux and store it securely
-    dispatch(setSeedPhrase(phraseArray));
+    setSeedPhrase(phraseArray);
 
     // Proceed to the next screen (e.g., password setup)
     history.push('/password-setup');

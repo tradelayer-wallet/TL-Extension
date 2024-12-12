@@ -1,27 +1,31 @@
 /* General Styles */
 body {
-  font-family: Arial, sans-serif;
-  background-color: white;
-  color: #333;
+  font-family: 'Roboto', sans-serif;
+  background-color: #1a1a2e; /* Smooth dark background */
+  color: #ffffff; /* White text */
   display: flex;
   justify-content: center;
   align-items: center;
   height: 100vh;
   margin: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
 .app-container {
-  width: 80%; /* Width should be 150% more than default */
-  max-width: 500px; /* Optional: You can set the max-width if you want */
+  width: 80%;
+  max-width: 500px;
   min-width: 300px;
   margin: 10px auto;
-  background: #fff;
-  padding: 80px 20px;
+  background: #111; /* Slightly darker container background */
+  padding: 60px 20px;
   border-radius: 10px;
-  box-shadow: 0 0 15px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5); /* Stronger shadow for depth */
   display: flex;
   flex-direction: column;
   align-items: center;
+  position: relative; /* For the settings button to position correctly */
+  overflow: hidden;
 }
 
 /* Logo Styling */
@@ -37,60 +41,83 @@ body {
   height: auto;
 }
 
+/* Settings Button Styling */
+.settings-button {
+  position: absolute;
+  top: 35px; /* Adjusted position */
+  right: -1px; /* Adjusted to align properly */
+  background-color: #4facfe; /* Blue button */
+  color: white;
+  border: none;
+  display: flex; /* Flexbox for centering */
+  justify-content: center; /* Horizontally center the icon */
+  align-items: center; /* Vertically center the icon */
+  width: 45px; /* Ensure square dimensions */
+  height: 30px; /* Ensure square dimensions */
+  border-radius: 50%; /* Circular button */
+  font-size: 1.2rem; /* Adjusted font size for better fit */
+  cursor: pointer;
+  z-index: 10; /* Ensure it stays on top */
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3); /* Subtle shadow for depth */
+  padding: 0; /* Remove extra padding */
+}
+
+
+.settings-button:hover {
+  background-color: #0078d4; /* Darker blue */
+}
+
+.settings-button:focus {
+  outline: none;
+  border: 2px solid #4facfe;
+}
+
 /* Button Styling */
 button {
-  background-color: #ff6f00; /* SidePit orange */
-  color: white;
+  background-color: #4facfe; /* Blue gradient start */
+  color: #ffffff; /* White text */
   padding: 15px;
   border: none;
   cursor: pointer;
   font-size: 18px;
   border-radius: 10px;
-  width: 100%;  /* Makes the button expand to full width */
+  width: 100%;
   margin-top: 20px;
+  font-weight: bold;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
 }
 
 button:hover {
-  background-color: #ff4500; /* Darker orange */
+  background-color: #0078d4; /* Hover effect with darker blue */
 }
 
 button:focus {
   outline: none;
-  border: 2px solid #ff6f00;
+  border: 2px solid #4facfe;
 }
 
 /* Input Styling */
 input {
-  padding: 10px;
+  padding: 12px;
   margin: 10px 0;
-  border: 1px solid #ccc;
+  border: 1px solid #333;
+  background-color: #222;
+  color: #ffffff;
   width: 100%;
   font-size: 16px;
-}
-
-input[type="password"] {
-  font-family: 'Courier', monospace;
+  border-radius: 8px;
 }
 
 input:focus {
   outline: none;
-  border: 2px solid #ff6f00;
-}
-
-/* Container for sections */
-.seed-phrase-generation, .verify-seed-phrase, .password-setup {
-  margin: 20px;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
-  width: 100%;
+  border: 2px solid #4facfe;
 }
 
 /* Seed Phrase Import Section */
 .seed-phrase-import {
   display: grid;
-  grid-template-columns: repeat(3, 1fr); /* 3 columns per row */
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin-top: 20px;
 }
@@ -100,227 +127,104 @@ input:focus {
   font-size: 16px;
   text-align: center;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid #333;
+  background-color: #222;
+  color: #ffffff;
 }
 
-button {
-  background-color: #ff6f00; /* SidePit orange */
-  color: white;
-  padding: 10px 20px;
-  font-size: 16px;
+/* Section Styling */
+.seed-phrase-generation, .verify-seed-phrase, .password-setup {
+  margin: 20px;
+  padding: 20px;
+  border: 1px solid #333;
+  border-radius: 10px;
+  background-color: #121212;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
   width: 100%;
-  margin-top: 20px;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
 }
 
-button:hover {
-  background-color: #ff4500; /* Darker orange */
-}
-
-button:focus {
-  outline: none;
-  border: 2px solid #ff6f00;
-}
-
-h2 {
+/* Headings */
+h1, h2 {
   text-align: center;
-  font-size: 20px;
-  color: #ff6f00;
+  color: #4facfe; /* Blue accent for headings */
 }
 
 h1 {
-  text-align: center;
   font-size: 24px;
 }
 
+h2 {
+  font-size: 20px;
+}
 
-/* Show Seed Phrase Section */
+/* Seed Phrase Display */
 .seed-phrase {
   display: grid;
-  grid-template-columns: repeat(4, 1fr); /* 4 columns */
-  gap: 8px; /* Reduced gap between words */
-  justify-items: center; /* Center content in each cell */
-  margin-top: 20px; /* Margin above the container */
-  margin-left: 5px; /* Reduced left margin */
-  margin-right: 5px; /* Reduced right margin */
-  max-width: 90%; /* Shrink width for better fit */
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  justify-items: center;
+  margin-top: 20px;
+  max-width: 90%;
   width: 100%;
 }
 
 .seed-word {
-  background-color: #f4f4f4;
-  padding: 15px 10px;  /* Increased padding for a larger placard effect */
+  background-color: #222;
+  padding: 10px;
   font-family: 'Roboto', sans-serif;
-  font-size: 18px;  /* Larger font size */
-  font-weight: bold;
-  text-align: center;  /* Center the text inside each placard */
+  font-size: 16px;
+  text-align: center;
   border-radius: 8px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
-  width: 75%;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.5);
+  color: #ffffff;
 }
 
-.seed-word:nth-child(4n+1) {
-  margin-left: 0;  /* Remove left margin for the first word of each row */
-}
-
-/* Additional styling for the 'Next' button */
+/* Next Button */
 .next-step-button {
-  background-color: #ff6f00;
-  color: white;
+  background-color: #4facfe;
+  color: #ffffff;
   padding: 10px 20px;
   border: none;
   font-size: 16px;
   cursor: pointer;
   width: 90%;
   margin-top: 20px;
-  margin-left: auto;  /* Centers the button */
-  margin-right: auto; /* Centers the button */
-  display: block;     /* Makes the button a block-level element so it can be centered */
+  border-radius: 8px;
 }
 
-/* Styling for the balance container */
+.next-step-button:hover {
+  background-color: #0078d4;
+}
+
+.next-step-button:focus {
+  outline: none;
+  border: 2px solid #4facfe;
+}
+
+/* Balance and Address Styling */
 .balance-container {
-  width: 80%; /* 80% width */
+  width: 100%;
   max-width: 500px;
   min-width: 300px;
-  background: url('./images/slate_texture.png') no-repeat center center; /* Use your generated image */
-  background-size: cover;  /* Ensure the background scales to fill the container */
-  padding: 20px;
-  border-radius: 20px;  /* Increased border-radius for a rounded rectangle effect */
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  background-color: #1a1a2e;
+  padding: 10px;
+  border-radius: 20px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   align-items: center;
+  overflow: hidden; /* Hide overflow */
+  height: calc(100vh - 100px); /* Dynamically adjust height relative to viewport */
+  box-sizing: border-box; /* Include padding in height/width calculations */
+  margin: 0;
+  padding: 0;
 }
 
 
 
-.next-step-button:hover {
-  background-color: #ff4500;
-}
-
-/* General styling for the container */
-.container {
-  font-family: Arial, sans-serif;
-  padding: 20px;
-  background-color: #1a1a1a;
-  color: #fff;
-  border-radius: 15px;
-  width: 300px;
-  box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2);
-}
-
-/* Heading style */
-.container h2 {
-  font-size: 1.6rem;
-  margin-bottom: 20px;
-  color: #f8c800;
-  text-align: center;
-}
-
-/* Styling for contract ticker */
-.contract-ticker {
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #f8c800;
+.balance, .address {
+  font-size: 0.9rem;
+  color: #ffffff;
   text-align: center;
   margin-bottom: 10px;
-}
-
-/* Styling for PNL and ROE with color change based on value */
-.pnls {
-  font-size: 2.5rem;
-  font-weight: bold;
-  color: green;
-  text-align: center;
-}
-
-.pnls-negative {
-  color: red;
-}
-
-.roe {
-  font-size: 1.2rem;
-  color: #fff;
-  text-align: center;
-  margin-top: 10px;
-}
-
-/* Style for the buttons */
-button {
-  width: 100%;
-  padding: 12px;
-  margin: 8px 0;
-  background-color: #f8c800;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
-}
-
-button:hover {
-  background-color: #ffb600;
-}
-
-/* Position for the settings button */
-.settings-button {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background-color: #f8c800;
-  color: white;
-  border: none;
-  border-radius: 50%;
-  padding: 10px;
-  font-size: 1.2rem;
-  cursor: pointer;
-}
-
-.settings-button:hover {
-  background-color: #ffb600;
-}
-
-/* Address and balance text styling */
-.balance {
-  font-size: 1rem;
-  color: #fee;
-  text-align: center;
-  margin-bottom: 10px;
-}
-
-.address{
-  font-size: 1rem;
-  color: #fee;
-  text-align: center;
-  margin-bottom: 10px;
-} 
-
-/* For the balance display buttons */
-.buttons-container {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  margin-top: 20px;
-  gap: 10px;
-}
-
-button {
-  font-size: 1.1rem;
-  background-color: #ff6f00;  /* SidePit orange */
-  padding: 12px;
-  border-radius: 10px;
-  width: 100%;
-  margin-top: 10px;
-}
-
-button:hover {
-  background-color: #ff4500; /* Darker orange */
-}
-
-button:focus {
-  outline: none;
-  border: 2px solid #ff6f00;
 }

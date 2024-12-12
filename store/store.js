@@ -74,13 +74,13 @@ const rootReducer = (state = initialState, action) => {
       return { ...state, seedGenerationStep: action.payload };
     case SET_PASSWORD:
       return { ...state, password: action.payload };
-    case SET_CONFIRMATIONPASSWORD:
+    case 'SET_CONFIRMATIONPASSWORD':
       return { ...state, password: action.payload };
     case SET_WALLET:
       return { ...state, wallet: action.payload };
     case SET_ENCRYPTED_SEED:
       return { ...state, encryptedSeed: action.payload };
-    case 'SET_CONFIRMATION_WORD:'
+    case SET_CONFIRMATION_WORD:
       return { ...state, confirmationWord: action.payload };
     case SET_SELECTED_WORD:
       return { ...state, selectedWord: action.payload };

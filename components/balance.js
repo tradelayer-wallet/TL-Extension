@@ -5,10 +5,8 @@ import { generateAddressFromSeed } from '../lib/walletUtils';  // Function to ge
 import axios from 'axios';  // For API requests
 import account from './sidepit'
 import CryptoJS from 'crypto-js';
-import NetworkSelector from './NetworkSelector';
 
 const Balances = () => {
-  const [currentNetwork, setCurrentNetwork] = useState(networks[0]);
   const [btcBalance, setBtcBalance] = useState(null);
   const [loading, setLoading] = useState(true);
   const [contractTicker, setContract] = useState('')
@@ -16,16 +14,6 @@ const Balances = () => {
   const [pnl, setPNL] = useState(0)
   const dispatch = useDispatch();
   const address = useSelector((state) => state.address);
-
-  const handleNetworkChange = (network) => {
-    const seedPhrase = localStorage.getItem('encryptedSeed');
-    const decryptedSeed = CryptoJS.AES.decrypt(seedPhrase, password).toString(CryptoJS.enc.Utf8);
-    const addressData = generateAddressFromSeed(decryptedSeed, network.network, network.path);
-    setAddress(addressData.address);
-    console.log('Switched to network:', network.name);
-  };
-
-
   useEffect(() => {
     if(address){
         chrome.storage.local.set({ address }, () => {
@@ -67,10 +55,6 @@ const Balances = () => {
         <p>Loading...</p>
       ) : (
         <>
-         <div>
-            <NetworkSelector onNetworkChange={handleNetworkChange} />
-            <p>Current Address: {address}</p>
-          </div>
           <p className="contract-ticker">Position: {contractTicker}</p>
           <p className={pnl >= 0 ? "pnl" :"pnls-negative" }>PNL: {pnl}</p>
           <p className="balance">BTC Balance: {btcBalance}</p>

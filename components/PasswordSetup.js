@@ -17,7 +17,7 @@ const PasswordSetup = () => {
       setPasswordError('Passwords do not match. Please try again.');
       return;
     }
-    dispatch(setConfirmationPasswordValue(''))    
+    setConfirmationPasswordValue('')    
     let encryptedSeed = localStorage.getItem('encryptedSeed');
     
     // If there's no encrypted seed, encrypt the seedPhrase and store it
@@ -34,9 +34,9 @@ const PasswordSetup = () => {
 
     // Decrypt the seed phrase using the entered password
     const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
-    dispatch(setPasswordValue(''))
+    setPasswordValue('')
     const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    dispatch(setSeedPhrase('')); 
+    setSeedPhrase(''); 
     if (serializedSeed) {
       dispatch(setStep(6)); // Proceed to Step 6 (Password prompt) after successful decryption
     } else {

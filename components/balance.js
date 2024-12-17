@@ -104,8 +104,8 @@ const Balances = () => {
 
           <div className="buttons-container">
             <button onClick={handleSend}>Send</button>
-            <button onClick={handleDeposit}>Lock Margin</button>
-            <button onClick={handleWithdraw}>Solicit Unlock</button>
+            <button onClick={handleDeposit}>Token Swap</button>
+            <button onClick={handleWithdraw}>Provide Liquidity</button>
           </div>
           <div className="settings-button">
             <button onClick={goToSettings}>⚙️</button>

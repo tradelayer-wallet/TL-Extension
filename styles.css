@@ -230,7 +230,7 @@ h2 {
 }
 
 .wallet-address-display {
-  font-size: 0.85rem; /* Slightly smaller font size */
+  font-size: 0.8rem; /* Slightly smaller font size */
   color: #ffffff; /* White text color for contrast */
   max-width: 250px; /* Adjust the width */
   overflow: hidden; /* Ensure the text doesn't overflow */
@@ -240,9 +240,11 @@ h2 {
   align-items: center; /* Vertically center items */
   justify-content: space-between; /* Space between elements */
   background: linear-gradient(90deg, #1D3557, #457B9D); /* Gradient background */
-  padding: 8px 12px; /* Add padding */
-  border-radius: 6px; /* Rounded corners */
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2); /* Subtle shadow */
+  padding: 2px 6px; /* Minimize padding */
+  height: 30px; /* Fixed height */
+  line-height: 1; /* Reduce the line height for compactness */
+  border-radius: 4px; /* Adjusted corners for a sleeker look */
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.2); /* Subtle shadow */
   cursor: default; /* Default cursor */
 }
 
@@ -256,15 +258,22 @@ h2 {
 }
 
 .copy-icon {
-  margin-left: 10px; /* Add spacing between address and icon */
+  margin-left: 6px; /* Slightly reduced spacing */
   cursor: pointer; /* Pointer cursor for interactivity */
   color: #bbb; /* Subtle color for the clipboard icon */
-  font-size: 1rem; /* Adjust icon size */
-  border: none;
-  background: none;
-  display: inline-block;
+  font-size: 0.8rem; /* Adjust icon size to match the reduced height */
+  padding: 10px 10px; /* Fixed padding format */
+  border: none; /* No border */
+  background: none; /* Transparent background */
+  display: inline-flex; /* Inline-flex for proper alignment */
+  align-items: center; /* Vertically center the icon */
+  justify-content: center; /* Horizontally center the icon */
+  position: relative; /* Enable positioning adjustments */
+  top: -8px; /* Move the icon up by 5px */
   transition: color 0.3s ease; /* Smooth hover transition */
 }
+
+
 
 .copy-icon:hover {
   color: #fff; /* Highlight icon on hover */

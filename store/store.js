@@ -102,7 +102,7 @@ const rootReducer = (state = initialState, action) => {
     case 'SET_SIGNREQUEST':
       return {...state, signRequest: action.payload}
     case 'SET_PUBKEY':
-      return {...sate, pubkey: action.payload}  
+      return {...state, pubkey: action.payload}  
     default:
       return state;
   }

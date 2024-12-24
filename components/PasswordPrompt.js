@@ -31,8 +31,30 @@ const PasswordPrompt = () => {
       const actionObj = {type:'SET_ADDRESS', payload: address.address}
       console.log('checking action '+actionObj)
       dispatch(actionObj)
-      const pubkeyObj = {type:'SET_PUBKEY', payload: address.publicKey}
-      dispatch(pubkeyObj)
+    if (address.publicKey) {
+        try {
+          // Parse the string into an array of numbers
+          const publicKeyArray = address.publicKey
+            .split(',') // Split the string by commas
+            .map((value) => parseInt(value.trim(), 10)); // Convert each value to a number
+
+          // Check if the array contains valid numbers
+          if (!Array.isArray(publicKeyArray) || publicKeyArray.some(isNaN)) {
+            console.log('Invalid publicKey format');
+          }
+
+          // Convert the array to a Uint8Array and then to a hex string
+          const serializedPubKey = Buffer.from(new Uint8Array(publicKeyArray)).toString('hex');
+
+          // Dispatch the serialized pubkey
+          const pubkeyObj = { type: 'SET_PUBKEY', payload: serializedPubKey };
+          console.log('Pubkey hex:', serializedPubKey);
+          dispatch(pubkeyObj);
+        } catch (error) {
+          console.error('Error processing publicKey:', error);
+        }
+      }
+
       const encryptedKey = CryptoJS.AES.encrypt(address.privateKey.toString(), password)
       
       console.log('encrypted key '+encryptedKey)

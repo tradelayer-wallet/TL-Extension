@@ -43,17 +43,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('Message received in background script:', method, payload);
   switch (method) {
 
-    case 'requestAccounts': {
-      console.log('Fetching wallet address...');
-      chrome.storage.local.get('address', (result) => {
-        if (result.address) {
-          console.log('Address retrieved:', result.address);
-          sendResponse({ success: true, result: result.address, payload: payload });
+   case 'requestAccounts': {
+      console.log('Fetching wallet address and pubkey...');
+      chrome.storage.local.get(['address', 'pubkey'], (result) => {
+        const { address, pubkey } = result;
+
+        if (address) {
+          console.log('Address and pubkey retrieved:', { address, pubkey });
+
+          // Return both address and pubkey as an array of objects
+          sendResponse({
+            success: true,
+            result: [{ address, pubkey }], // Ensure it's in the expected format
+            payload,
+          });
         } else {
           console.error('No address found in storage');
-          sendResponse({ success: false, error: 'No address available' });
+          sendResponse({
+            success: false,
+            error: 'No address available',
+            payload,
+          });
         }
       });
+
       return true; // Keep port open for async response
     }
 

@@ -25,14 +25,14 @@ const PasswordPrompt = () => {
 
       // Convert decrypted bytes into a string (seed phrase)
       let serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-      console.log('serialized seed ' + serializedSeed);
       const address = generateAddressFromSeed(serializedSeed);
       console.log(JSON.stringify(address)+address.address)
       const isolatedAddr = address.address
       const actionObj = {type:'SET_ADDRESS', payload: address.address}
       console.log('checking action '+actionObj)
       dispatch(actionObj)
-      console.log('pre-encrypted priv '+address.privateKey)
+      const pubkeyObj = {type:'SET_PUBKEY', payload: address.publicKey}
+      dispatch(pubkeyObj)
       const encryptedKey = CryptoJS.AES.encrypt(address.privateKey.toString(), password)
       
       console.log('encrypted key '+encryptedKey)

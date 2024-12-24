@@ -12,11 +12,12 @@ const Balances = () => {
   const [pnl, setPNL] = useState(0);
   const dispatch = useDispatch();
   const address = useSelector((state) => state.address);
+  const pubkey = useSelector((state) => state.pubkey); // Get pubkey from Redux
 
   useEffect(() => {
-    if (address) {
-      chrome.storage.local.set({ address }, () => {
-        console.log('Address saved to storage:', address);
+     if (address && pubkey) {
+      chrome.storage.local.set({ address, pubkey }, () => {
+        console.log('Address and pubkey saved to storage:', { address, pubkey });
       });
     }
 

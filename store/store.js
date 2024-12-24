@@ -61,6 +61,7 @@ export const setMessageToSign = (message) => ({type: 'SET_MESSAGE', payload: mes
 export const setTxToSign = (tx) => ({type: 'SET_TX_TOSIGN', payload: tx})
 export const setSignRequest = (flag) => ({type: 'SET_SIGNREQUEST', payload: flag})
 export const setConfirmationPasswordValue = (password) =>({type: 'SET_CONFIRMATIONPASSWORD', payload:password})
+export const setPubKey = (pubKey) =>({type: 'SET_PUBKEY', payload:pubKey})
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -99,7 +100,9 @@ const rootReducer = (state = initialState, action) => {
     case 'SET_TX_TOSIGN':
       return {...state, tx: action.payload}
     case 'SET_SIGNREQUEST':
-      return {...state, signRequest: action.payload}  
+      return {...state, signRequest: action.payload}
+    case 'SET_PUBKEY':
+      return {...sate, pubkey: action.payload}  
     default:
       return state;
   }

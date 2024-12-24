@@ -14,22 +14,27 @@ window.addEventListener('message', (event) => {
   if (event.source !== window) return;
 
   const { type, data } = event.data;
-  const method = data.method
-  console.log('inside content script '+type +' '+method)
-  if(type === 'request'){
-    // Forward the message to the background script
-    chrome.runtime.sendMessage({ method, payload: data }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error('Error sending message to background:', chrome.runtime.lastError.message);
-        window.postMessage({ type: 'response', data: { success: false, error: chrome.runtime.lastError.message } }, '*');
-      } else {
-        // Send the response back to the webpage
-        console.log('Response from background:', response);
-        window.postMessage({ type: 'response', data: response }, '*');
-      }
-    });
+  const method = data.method;
+  console.log('inside content script', type, method);
+
+  if (type === 'request') {
+    try {
+      chrome.runtime.sendMessage({ method, payload: data }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error('Error sending message to background:', chrome.runtime.lastError.message);
+          window.postMessage({ type: 'response', data: { success: false, error: chrome.runtime.lastError.message } }, '*');
+        } else {
+          console.log('Response from background:', response);
+          window.postMessage({ type: 'response', data: response }, '*');
+        }
+      });
+    } catch (error) {
+      console.error('Error handling message:', error.message);
+      window.postMessage({ type: 'response', data: { success: false, error: error.message } }, '*');
+    }
   }
 });
+
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message) => {

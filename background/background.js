@@ -2,6 +2,9 @@
 //"https://frontend.test.sidepit.com/trade"
 let popupWindowId = null; // Store popup window ID globally
 
+const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnMPfXMRS7Rk";
+const IPINFO_TOKEN = "5992daa04f9275";
+
 function openPopup(step=13,  payload = null) {
   const params = new URLSearchParams();
   params.append('step', step);
@@ -167,41 +170,89 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Keep the port open for async responses
     }
 
-    case 'fetchUserIP': {
-      let ipAddress = '';
+   case 'fetchUserIP': {
       const ipFetchUrls = [
-          "http://ip-api.com/json",
-          "https://api.ipify.org?format=json"
+        "http://ip-api.com/json",
+        "https://api.ipify.org?format=json",
       ];
 
-        const fetchIP = async () => {
-            for (const url of ipFetchUrls) {
-                try {
-                    const response = await fetch(url);
-                    const data = await response.json();
-                    if (data?.ip) {
-                        ipAddress = data.ip; // For ipify.org
-                        console.log(`IP fetched from ${url}: ${ipAddress}`);
-                        break;
-                    } else if (data?.query) { // For ip-api.com
-                        ipAddress = data.query;
-                        console.log(`IP fetched from ${url}: ${ipAddress}`);
-                        break;
-                    }
-                } catch (error) {
-                    console.error(`Failed to fetch IP from ${url}:`, error.message);
-                }
+      const fetchIPDetails = async () => {
+        let ipAddress = '';
+        let countryCode = '';
+
+        for (const url of ipFetchUrls) {
+          try {
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data?.ip) {
+              ipAddress = data.ip; // For ipify.org
+              console.log(`IP fetched from ${url}: ${ipAddress}`);
+            } else if (data?.query) {
+              ipAddress = data.query; // For ip-api.com
+              console.log(`IP fetched from ${url}: ${ipAddress}`);
             }
 
-            if (ipAddress) {
-                sendResponse({ success: true, ip: ipAddress, payload: payload,});
-            } else {
-                sendResponse({ success: false, error: 'Unable to fetch public IP from all sources.', payload: payload });
-            }
-        };
+            if (ipAddress) break;
+          } catch (error) {
+            console.error(`Failed to fetch IP from ${url}:`, error.message);
+          }
+        }
 
-        fetchIP(); // Call the async function
-        return true; // Keep the message port open for asynchronous response
+        if (!ipAddress) {
+          return sendResponse({
+            success: false,
+            error: 'Unable to fetch public IP from all sources.',
+          });
+        }
+
+        // Fetch additional details from the Criminal IP API or ipinfo.io
+        try {
+          const primaryResponse = await fetch(
+            `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`,
+            {
+              headers: {
+                "x-api-key": "YOUR_CRIMINAL_IP_API_KEY",
+              },
+            }
+          );
+
+          if (primaryResponse.ok) {
+            const data = await primaryResponse.json();
+            countryCode = data?.whois?.country_code || "Unknown";
+
+            return sendResponse({
+              success: true,
+              ip: ipAddress,
+              country: countryCode,
+              details: data,
+            });
+          }
+
+          // Fallback to ipinfo.io
+          const fallbackResponse = await fetch(
+            `https://ipinfo.io/${ipAddress}?token=YOUR_IPINFO_TOKEN`
+          );
+          const fallbackData = await fallbackResponse.json();
+
+          return sendResponse({
+            success: true,
+            ip: ipAddress,
+            country: fallbackData.country || "Unknown",
+            details: fallbackData,
+          });
+        } catch (error) {
+          console.error("Error fetching additional IP details:", error.message);
+          return sendResponse({
+            success: true,
+            ip: ipAddress,
+            country: "Unknown",
+            error: "Failed to fetch detailed IP information.",
+          });
+        }
+      };
+
+      fetchIPDetails();
+      return true; // Keep port open for async response
     }
 
 

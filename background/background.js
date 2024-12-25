@@ -167,6 +167,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Keep the port open for async responses
     }
 
+    case 'fetchUserIP': {
+      let ipAddress = '';
+      const ipFetchUrls = [
+          "http://ip-api.com/json",
+          "https://api.ipify.org?format=json"
+      ];
+
+        const fetchIP = async () => {
+            for (const url of ipFetchUrls) {
+                try {
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (data?.ip) {
+                        ipAddress = data.ip; // For ipify.org
+                        console.log(`IP fetched from ${url}: ${ipAddress}`);
+                        break;
+                    } else if (data?.query) { // For ip-api.com
+                        ipAddress = data.query;
+                        console.log(`IP fetched from ${url}: ${ipAddress}`);
+                        break;
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch IP from ${url}:`, error.message);
+                }
+            }
+
+            if (ipAddress) {
+                sendResponse({ success: true, ip: ipAddress, payload: payload,});
+            } else {
+                sendResponse({ success: false, error: 'Unable to fetch public IP from all sources.', payload: payload });
+            }
+        };
+
+        fetchIP(); // Call the async function
+        return true; // Keep the message port open for asynchronous response
+    }
+
+
     default: {
       console.error(`Unknown method: ${method}`);
       sendResponse({ success: false, error: 'Unknown method' });

@@ -67,19 +67,25 @@ class MyWalletProvider extends EventEmitter {
       if (event.source !== window) return;
 
       const { type, data } = event.data;
-      console.log('in listener in window.js '+type+' '+JSON.stringify(data))
+      console.log('in listener in window.js ' + type + ' ' + JSON.stringify(data));
+
       if (type === 'response') {
-        const { id, result, error } = data.payload;
-        console.log('window handle response '+data.result+' '+id)
-        const { resolve, reject } = this.pendingRequests.get(id) || {};
-        if (resolve) {
-          this.pendingRequests.delete(id);
-          error ? reject(error) : resolve(data.result);
-        }
-      } else if (type === 'accountsChanged' || type === 'networkChanged'|| type==='signResult') {
+          const { id, result, error } = data.payload;
+          console.log('window handle response ' + result + ' ' + id);
+          const { resolve, reject } = this.pendingRequests.get(id) || {};
+          if (resolve) {
+            this.pendingRequests.delete(id);
+            error ? reject(error) : resolve(result);
+          }
+      } else if (
+        type === 'accountsChanged' ||
+        type === 'networkChanged' ||
+        type === 'signResult'
+      ) {
         this.emit(type, data);
       }
     });
+
 
     this.readyPromise = new ReadyPromise(1);
 

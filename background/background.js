@@ -93,22 +93,42 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'signTransaction': {
-      openPopup()
-      console.log('Requesting popup to sign transaction...');
-      chrome.runtime.sendMessage(
-        { method: 'signTransaction', payload: { transaction: payload.transaction } },
-        (response) => {
-          if (response?.success) {
-            console.log('Transaction signed:', response.signedTransaction);
-            sendResponse({ success: true, result: response.signedTransaction, payload: payload  });
-          } else {
-            console.error('Failed to sign transaction');
-            sendResponse({ success: false, error: 'Sign transaction failed', payload: payload  });
-          }
-        }
-      );
-      return true; // Keep port open for async response
+        const { transaction } = payload; // Extract the transaction from the payload
+        console.log('Transaction to sign:', transaction);
+
+        // Pass the transaction to the popup or wallet utils for signing
+        // Ensure the popup or signing process handles it appropriately
+        openPopup();
+        signTransaction(transaction).then((signedTransaction) => {
+            sendResponse({ success: true, signedTransaction });
+        }).catch((error) => {
+            sendResponse({ success: false, error: error.message });
+        });
+
+        return true; // Keep port open for async response
     }
+
+    case 'signPsbt': {
+        const { psbtHex, redeemKey } = payload;
+
+        console.log('Requesting popup to sign PSBT:', { psbtHex, redeemKey });
+
+        openPopup();
+        chrome.runtime.sendMessage(
+            { type: 'signPsbtRequest', payload: { psbtHex, redeemKey } },
+            (response) => {
+                if (response?.success) {
+                    console.log('PSBT signed:', response.signedPsbt);
+                    sendResponse({ success: true, signedPsbt: response.signedPsbt });
+                } else {
+                    console.error('Failed to sign PSBT');
+                    sendResponse({ success: false, error: 'Sign PSBT failed' });
+                }
+            }
+        );
+        return true; // Keep port open for async response
+    }
+
 
     case 'keepAlive': {
       console.log('Handling keepAlive');
@@ -170,90 +190,87 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Keep the port open for async responses
     }
 
-   case 'fetchUserIP': {
-      const ipFetchUrls = [
-        "http://ip-api.com/json",
-        "https://api.ipify.org?format=json",
-      ];
-
-      const fetchIPDetails = async () => {
+  case 'fetchUserIP': {
         let ipAddress = '';
-        let countryCode = '';
+        const ipFetchUrls = [
+          'http://ip-api.com/json',
+          'https://api.ipify.org?format=json',
+        ];
 
-        for (const url of ipFetchUrls) {
-          try {
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data?.ip) {
-              ipAddress = data.ip; // For ipify.org
-              console.log(`IP fetched from ${url}: ${ipAddress}`);
-            } else if (data?.query) {
-              ipAddress = data.query; // For ip-api.com
-              console.log(`IP fetched from ${url}: ${ipAddress}`);
+        const fetchIP = async () => {
+          for (const url of ipFetchUrls) {
+            try {
+              const response = await fetch(url);
+              const data = await response.json();
+              if (data?.ip) {
+                ipAddress = data.ip; // For ipify.org
+                console.log(`IP fetched from ${url}: ${ipAddress}`);
+                break;
+              } else if (data?.query) { // For ip-api.com
+                ipAddress = data.query;
+                console.log(`IP fetched from ${url}: ${ipAddress}`);
+                break;
+              }
+            } catch (error) {
+              console.error(`Failed to fetch IP from ${url}:`, error.message);
             }
-
-            if (ipAddress) break;
-          } catch (error) {
-            console.error(`Failed to fetch IP from ${url}:`, error.message);
           }
-        }
 
-        if (!ipAddress) {
-          return sendResponse({
-            success: false,
-            error: 'Unable to fetch public IP from all sources.',
-          });
-        }
+          if (!ipAddress) {
+            sendResponse({
+              success: false,
+              error: 'Unable to fetch public IP from all sources.',
+              payload,
+            });
+            return;
+          }
 
-        // Fetch additional details from the Criminal IP API or ipinfo.io
-        try {
-          const primaryResponse = await fetch(
-            `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`,
-            {
+          // Fetch details about the IP from Criminal IP API
+          const primaryUrl = `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`;
+          try {
+            const primaryResponse = await fetch(primaryUrl, {
               headers: {
-                "x-api-key": "YOUR_CRIMINAL_IP_API_KEY",
+                'x-api-key': CRIMINAL_IP_API_KEY,
               },
+            });
+
+            if (!primaryResponse.ok) {
+              throw new Error('Primary API response was not OK.');
             }
-          );
 
-          if (primaryResponse.ok) {
-            const data = await primaryResponse.json();
-            countryCode = data?.whois?.country_code || "Unknown";
+            const primaryData = await primaryResponse.json();
 
-            return sendResponse({
+            // Parse the response for VPN and country details
+            const isVpn =
+              primaryData?.issues?.is_vpn ||
+              primaryData?.issues?.is_proxy ||
+              primaryData?.issues?.is_tor ||
+              false;
+
+            const countryCode =
+              primaryData?.whois?.data?.[0]?.org_country_code || 'Unknown';
+
+            sendResponse({
               success: true,
-              ip: ipAddress,
-              country: countryCode,
-              details: data,
+              result:{ip: ipAddress,
+              isVpn,
+              countryCode},
+              payload: payload,
+            });
+          } catch (error) {
+            console.error('Error fetching IP details from Criminal IP:', error.message);
+            sendResponse({
+              success: false,
+              error: 'Failed to fetch IP details.',
+              payload,
             });
           }
+        };
 
-          // Fallback to ipinfo.io
-          const fallbackResponse = await fetch(
-            `https://ipinfo.io/${ipAddress}?token=YOUR_IPINFO_TOKEN`
-          );
-          const fallbackData = await fallbackResponse.json();
+        fetchIP(); // Call the async function
+        return true; // Keep the message port open for asynchronous response
+      }
 
-          return sendResponse({
-            success: true,
-            ip: ipAddress,
-            country: fallbackData.country || "Unknown",
-            details: fallbackData,
-          });
-        } catch (error) {
-          console.error("Error fetching additional IP details:", error.message);
-          return sendResponse({
-            success: true,
-            ip: ipAddress,
-            country: "Unknown",
-            error: "Failed to fetch detailed IP information.",
-          });
-        }
-      };
-
-      fetchIPDetails();
-      return true; // Keep port open for async response
-    }
 
 
     default: {

@@ -15,10 +15,11 @@ import Lock from '../components/lock'
 import Withdraw from '../components/withdraw'
 import Settings from '../components/settings'
 import ExposeSeed from '../components/ExposeSeed'
-import SignTransaction from '../components/SignTransaction'
+import SignTransaction from '../components/signTransaction'
+import SignPSBT from '../components/signPSBT'
 import ShowTx from '../components/ShowTx'
 import ResetPass from '../components/ResetPass'
-import { setStep, setSeedPhrase, setMessageToSign, setTxToSign, setSignRequest } from '../store/store'; // Import necessary actions
+import { setStep, setSeedPhrase, setMessageToSign, setTxToSign, setSignRequest, setPSBTToSign } from '../store/store'; // Import necessary actions
 
 const App = () => {
   const [passwordStep, setPasswordStep] = useState(false);
@@ -82,6 +83,16 @@ const App = () => {
       dispatch(setStep(13)); // Go to the signing page
       sendResponse({ success: true });
     }
+
+    if (message.type === 'signPsbtRequest') {
+        const { psbtHex, redeemKey } = message.payload;
+
+        // Store the PSBT data and set the signing step
+        dispatch(setPSBTToSign({ psbtHex, redeemKey }));
+        dispatch(setSignRequest(true));
+        dispatch(setStep(14)); // Go to the PSBT signing page
+        sendResponse({ success: true });
+    }
   });
 
   return (
@@ -109,6 +120,7 @@ const App = () => {
             {step === 13 && <SignTransaction/>}
             {step === 14 && <ShowTx />}
             {step === 15 && <ResetPass />}
+            {step === 16 && <SignPSBT />}
           </>
         )}
       </div>

@@ -86,7 +86,7 @@ const SignTransaction = () => {
           <ul>
             {decodedTx.outputs.map((output, idx) => (
               <li key={idx}>
-                Value: {output.value} BTC, ScriptPubKey: {output.scriptPubKey}
+                Value: {output.value} LTC, ScriptPubKey: {output.scriptPubKey}
               </li>
             ))}
           </ul>

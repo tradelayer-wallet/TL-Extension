@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setStep, setTxid, setSignRequest, setMessageToSign } from '../store/store';
-import { signTransaction, signMessage } from '../lib/walletUtils';
+import { signTransaction, signMessage,retrieveSalt,signWithDecryptedKey  } from '../lib/walletUtils';
 
 const SignTransaction = () => {
   const decodedTx = useSelector((state) => state.decodedTransaction); // For regular transaction signing
@@ -11,44 +11,24 @@ const SignTransaction = () => {
   const dispatch = useDispatch();
 
   const sign = async () => {
-    if (!password) {
-      alert('Please enter a password');
-      return;
-    }
+      try {
+        const encryptedPrivateKey = localStorage.getItem('sessionEncryptedKey');
+        const salt = retrieveSalt();
 
-    console.log('inside sign '+signRequest+' '+messageToSign)
+        if (!encryptedPrivateKey || !salt) {
+          alert('Session expired. Please re-enter your password.');
+          dispatch(setStep(6)); // Redirect to PasswordPrompt
+          return;
+        }
 
-    //try {
-      if (signRequest && messageToSign) {
-        console.log('messageToSign '+messageToSign+' '+passwordRef)
-        // Signing an externally requested message
-
-        const signedMessage = await signMessage(messageToSign, passwordRef.current.value);
-        passwordRef.current.value=null
-        console.log('signed message '+signedMessage)
-        // Dispatch the result back to the listener
-        chrome.runtime.sendMessage({
-          method: 'signResponse',
-          payload: { signedMessage },
-        });
-
-        // Clear the sign request and return to the previous step
-        dispatch(setSignRequest(false));
-        localStorage.setItem('messageToSign', null); 
-        dispatch(setStep(7));
-      } else if (decodedTx) {
-        // Regular transaction signing flow
-        const txid = await signTransaction(decodedTx, password);
-        dispatch(setTxid(txid));
-
-        // Go to the ShowTx page
-        dispatch(setStep(14));
+        const signature = signWithDecryptedKey(encryptedPrivateKey, salt, decodedTx.hash);
+        dispatch(setTxid(signature));
+        dispatch(setStep(14)); // Move to ShowTx
+      } catch (error) {
+        console.error('Error signing transaction:', error);
+        alert('Failed to sign the transaction.');
       }
-    /*} catch (error) {
-      console.error('Error signing:', error);
-      alert('There was an error signing the transaction or message.');
-    }*/
-  };
+    };
 
   const cancel = () => {
     // Clear the signing state and return to the previous step

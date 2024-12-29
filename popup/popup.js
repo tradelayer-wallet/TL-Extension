@@ -31,12 +31,20 @@ const App = () => {
     const queryString = new URLSearchParams(window.location.search);
     const stepParam = queryString.get('step');
     const messageParam = queryString.get('message')
+    const requestId = queryString.get('message');
     const decodedMessage = messageParam ? decodeURIComponent(messageParam) : null;
 
     console.log('Query string in popup:', window.location.search);
     console.log('Step param:', stepParam);
     console.log('Message param:', decodedMessage);
    
+    if (stepParam === '13' && requestId) {
+      // Let the background script know this popup is ready
+      chrome.runtime.sendMessage({
+        method: 'popupReady',
+        payload: { requestId },
+      });
+    }
 
     if (stepParam) {
       const initialStep = parseInt(stepParam, 10);
@@ -68,15 +76,15 @@ const App = () => {
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('inside listener in popup.js '+JSON.stringify(message))
-    if (message.type === 'getAccount') {
+    if (message.method === 'getAccount') {
       const accounts = []
       accounts.push(address)
       sendResponse({ success: true, accounts });
     }
 
-    if (message.type === 'signTxRequest') {
-      const { messageToSign } = message.payload;
-
+    if (message.method === 'signTxRequest') {
+      const messageToSign = message.payload.txToSign;
+      console.log('inside signTxRequest '+messageToSign+' '+JSON.stringify(message.payload))
       // Store the message and set the signing step
       dispatch(setTxToSign(messageToSign));
       dispatch(setSignRequest(true));
@@ -84,7 +92,7 @@ const App = () => {
       sendResponse({ success: true });
     }
 
-    if (message.type === 'signPsbtRequest') {
+    if (message.method === 'signPsbtRequest') {
         const { psbtHex, redeemKey } = message.payload;
 
         // Store the PSBT data and set the signing step

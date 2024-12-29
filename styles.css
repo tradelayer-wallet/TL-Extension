@@ -299,3 +299,21 @@ h2 {
   background: #007acc;
   transform: scale(0.98);
 }
+
+/* Style for the transaction hex box */
+.tx-box {
+  max-height: 150px; /* Limit height to a stout rectangle */
+  max-width: 350px; /* Limit width to avoid full-width stretching */
+  overflow-y: auto; /* Enable vertical scrolling */
+  overflow-x: auto; /* Enable horizontal scrolling */
+  border: 1px solid #ccc; /* Light border for better separation */
+  padding: 10px; /* Add padding for better readability */
+  background-color: #333; /* Medium gray background */
+  color: #fff; /* White text for contrast */
+  font-family: monospace; /* Use monospace font for code-like content */
+  font-size: 14px; /* Adjust font size for readability */
+  word-break: break-word; /* Break long words to prevent overflow */
+  margin: 10px auto; /* Center and add spacing around the box */
+  border-radius: 5px; /* Slightly rounded corners for aesthetics */
+}
+

@@ -1,7 +1,7 @@
 
 //"https://frontend.test.sidepit.com/trade"
 let popupWindowId = null; // Store popup window ID globally
-
+const pendingRequests = {};
 const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnMPfXMRS7Rk";
 const IPINFO_TOKEN = "5992daa04f9275";
 
@@ -82,7 +82,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         (response) => {
           if (response?.success) {
             console.log('Message pushed to sign:', response.signedMessage);
-            sendResponse({ success: true, result: 'message proceeding to signature', payload: payload  });
+            sendResponse({ success: true, result: response.signedMessage, payload: payload  });
           } else {
             console.error('Failed to sign message');
             sendResponse({ success: false, error: 'Sign message failed', payload: payload  });
@@ -93,19 +93,71 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'signTransaction': {
-        const { transaction } = payload; // Extract the transaction from the payload
-        console.log('Transaction to sign:', transaction);
+      // 1) Grab the transaction from the payload
+      const { transaction } = payload.params;
+      console.log('Transaction to sign:', transaction, payload);
 
-        // Pass the transaction to the popup or wallet utils for signing
-        // Ensure the popup or signing process handles it appropriately
-        openPopup();
-        signTransaction(transaction).then((signedTransaction) => {
-            sendResponse({ success: true, signedTransaction });
-        }).catch((error) => {
-            sendResponse({ success: false, error: error.message });
-        });
+      // 2) Generate some ID for correlating request/response
+      const requestId = Date.now().toString(); 
+      
+      // 3) Store this `sendResponse` so we can call it later
+      pendingRequests[requestId] = { sendResponse, payload };
 
-        return true; // Keep port open for async response
+      // 4) Open the popup with a `step=13` and pass the requestId in the query
+      openPopup(13, requestId);
+
+      // 5) Return true to keep this message channel open
+      return true;
+    }
+
+     case 'popupReady': {
+      const { requestId } = payload;
+      console.log(`Popup is ready for requestId=${requestId}`);
+
+      // Retrieve the "pending request" data
+      const requestEntry = pendingRequests[requestId];
+      if (!requestEntry) {
+        console.error('No pending request found for requestId:', requestId);
+        break;
+      }
+
+      // We have the transaction in requestEntry.payload.params.transaction
+      const { transaction } = requestEntry.payload.params;
+      console.log('checking transaction in popup ready '+transaction)
+      // Now that the popup is ready, send the popup a signTxRequest
+      chrome.runtime.sendMessage({
+        method: 'signTxRequest',
+        payload: { requestId, txToSign: transaction },
+      });
+
+      break;
+    }
+
+    case 'signTxResponse': {
+      // e.g. user is done signing
+      const { requestId, signedTx } = payload;
+
+      // Find the original request callback
+      const requestEntry = pendingRequests[requestId];
+      if (!requestEntry) {
+        console.error('No pending request found for requestId:', requestId);
+        return true; // or false
+      }
+
+      // call the saved sendResponse from the signTransaction call
+      requestEntry.sendResponse({
+        success: true,
+        result: signedTx,
+        payload: requestEntry.payload
+      });
+
+      // Cleanup
+      delete pendingRequests[requestId];
+
+      // Optionally close the popup
+      closePopup();
+
+      break;
     }
 
     case 'signPsbt': {

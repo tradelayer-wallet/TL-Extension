@@ -4,6 +4,7 @@ let popupWindowId = null; // Store popup window ID globally
 const pendingRequests = {};
 const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnMPfXMRS7Rk";
 const IPINFO_TOKEN = "5992daa04f9275";
+const VPNAPI_KEY = "5b2a56ec9bdd4db1bc4ba4e6190d51b2"
 
 function openPopup(step=13,  payload = null) {
   const params = new URLSearchParams();
@@ -242,88 +243,122 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Keep the port open for async responses
     }
 
-  case 'fetchUserIP': {
-        let ipAddress = '';
-        const ipFetchUrls = [
-          'http://ip-api.com/json',
-          'https://api.ipify.org?format=json',
-        ];
+    case 'fetchUserIP': {
+      let ipAddress = '';
+      const ipFetchUrls = [
+        'http://ip-api.com/json',
+        'https://api.ipify.org?format=json',
+      ];
 
-        const fetchIP = async () => {
-          for (const url of ipFetchUrls) {
-            try {
-              const response = await fetch(url);
-              const data = await response.json();
-              if (data?.ip) {
-                ipAddress = data.ip; // For ipify.org
-                console.log(`IP fetched from ${url}: ${ipAddress}`);
-                break;
-              } else if (data?.query) { // For ip-api.com
-                ipAddress = data.query;
-                console.log(`IP fetched from ${url}: ${ipAddress}`);
-                break;
-              }
-            } catch (error) {
-              console.error(`Failed to fetch IP from ${url}:`, error.message);
-            }
-          }
-
-          if (!ipAddress) {
-            sendResponse({
-              success: false,
-              error: 'Unable to fetch public IP from all sources.',
-              payload,
-            });
-            return;
-          }
-
-          // Fetch details about the IP from Criminal IP API
-          const primaryUrl = `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`;
+      const fetchIP = async () => {
+        for (const url of ipFetchUrls) {
           try {
-            const primaryResponse = await fetch(primaryUrl, {
+            const response = await fetch(url);
+            const data = await response.json();
+            if (data?.ip) {
+              ipAddress = data.ip; // For ipify.org
+              console.log(`IP fetched from ${url}: ${ipAddress}`);
+              break;
+            } else if (data?.query) { // For ip-api.com
+              ipAddress = data.query;
+              console.log(`IP fetched from ${url}: ${ipAddress}`);
+              break;
+            }
+          } catch (error) {
+            console.error(`Failed to fetch IP from ${url}:`, error.message);
+          }
+        }
+
+        if (!ipAddress) {
+          sendResponse({
+            success: false,
+            error: 'Unable to fetch public IP from all sources.',
+            payload,
+          });
+          return;
+        }
+
+        // Fetch details about the IP from vpnapi.io
+        const primaryUrl = `https://vpnapi.io/api/${ipAddress}?key=${VPNAPI_KEY}`;
+        const secondaryUrl = `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`;
+
+        try {
+          const primaryResponse = await fetch(primaryUrl);
+
+          if (!primaryResponse.ok) {
+            throw new Error('Primary API response was not OK.');
+          }
+
+          const primaryData = await primaryResponse.json();
+
+          // Parse the response for VPN and country details
+          const isVpn =
+            primaryData?.security?.vpn ||
+            primaryData?.security?.proxy ||
+            primaryData?.security?.tor ||
+            primaryData?.security?.relay ||
+            false;
+
+          const countryCode = primaryData?.location?.country_code || 'Unknown';
+
+          sendResponse({
+            success: true,
+            result: {
+              ip: ipAddress,
+              isVpn,
+              countryCode,
+            },
+            payload,
+          });
+        } catch (primaryError) {
+          console.error('Error fetching IP details from vpnapi.io:', primaryError.message);
+
+          // Fallback to Criminal IP API
+          try {
+            const secondaryResponse = await fetch(secondaryUrl, {
               headers: {
                 'x-api-key': CRIMINAL_IP_API_KEY,
               },
             });
 
-            if (!primaryResponse.ok) {
-              throw new Error('Primary API response was not OK.');
+            if (!secondaryResponse.ok) {
+              throw new Error('Secondary API response was not OK.');
             }
 
-            const primaryData = await primaryResponse.json();
+            const secondaryData = await secondaryResponse.json();
 
-            // Parse the response for VPN and country details
             const isVpn =
-              primaryData?.issues?.is_vpn ||
-              primaryData?.issues?.is_proxy ||
-              primaryData?.issues?.is_tor ||
+              secondaryData?.issues?.is_vpn ||
+              secondaryData?.issues?.is_proxy ||
+              secondaryData?.issues?.is_tor ||
               false;
 
             const countryCode =
-              primaryData?.whois?.data?.[0]?.org_country_code || 'Unknown';
+              secondaryData?.whois?.data?.[0]?.org_country_code || 'Unknown';
 
             sendResponse({
               success: true,
-              result:{ip: ipAddress,
-              isVpn,
-              countryCode},
-              payload: payload,
+              result: {
+                ip: ipAddress,
+                isVpn,
+                countryCode,
+              },
+              payload,
             });
-          } catch (error) {
-            console.error('Error fetching IP details from Criminal IP:', error.message);
+          } catch (secondaryError) {
+            console.error('Error fetching IP details from Criminal IP:', secondaryError.message);
             sendResponse({
               success: false,
-              error: 'Failed to fetch IP details.',
+              error: 'Failed to fetch IP details from both APIs.',
               payload,
             });
           }
-        };
+        }
+      };
 
-        fetchIP(); // Call the async function
-        return true; // Keep the message port open for asynchronous response
-      }
-
-
+      fetchIP(); // Call the async function
+      return true; // Keep the message port open for asynchronous response
+    }
 
     default: {
       console.error(`Unknown method: ${method}`);

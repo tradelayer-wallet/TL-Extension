@@ -18,7 +18,7 @@ const SignTransaction = () => {
       return;
     }
     
-    console.log('inside sign '+signRequest+' '+messageToSign)
+    console.log('inside sign '+signRequest+' '+txToSign)
     passwordRef.current.value=null
     //try {
       /*if (signRequest && messageToSign) {
@@ -75,33 +75,8 @@ const SignTransaction = () => {
     {signRequest && txToSign && (
       <div>
         <h3>Message to Sign</h3>
-        <pre className="tx-box">{txToSign}</pre>
+        <pre className="tx-box">{JSON.stringify(txToSign, null, 2)}</pre>
       </div>
-    )}
-
-    {!signRequest && decodedTx && (
-      <>
-        <h3>Transaction Details</h3>
-        <pre>Raw Hex: {decodedTx.hex}</pre>
-
-        <h4>Inputs</h4>
-        <ul>
-          {decodedTx.inputs.map((input, idx) => (
-            <li key={idx}>
-              TXID: {input.txid}, Vout: {input.vout}, ScriptSig: {input.scriptSig}
-            </li>
-          ))}
-        </ul>
-
-        <h4>Outputs</h4>
-        <ul>
-          {decodedTx.outputs.map((output, idx) => (
-            <li key={idx}>
-              Value: {output.value} LTC, ScriptPubKey: {output.scriptPubKey}
-            </li>
-          ))}
-        </ul>
-      </>
     )}
 
     <div>

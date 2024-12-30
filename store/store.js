@@ -66,7 +66,10 @@ export const setPSBTToSign = (psbtHex, redeemKey) => ({
   type: 'SET_PSBT',
   payload: { psbtHex, redeemKey },
 });
-
+export const setRequestId = (id) => ({
+  type: 'SET_REQUESTID',
+  payload: id
+})
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -109,7 +112,9 @@ const rootReducer = (state = initialState, action) => {
     case 'SET_PUBKEY':
       return {...state, pubkey: action.payload} 
     case 'SET_PSBT':
-      return { ...state, psbt: action.payload }; 
+      return { ...state, psbt: action.payload };
+    case 'SET_REQUESTID':
+      return { ...state, id: action.payload} 
     default:
       return state;
   }

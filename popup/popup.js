@@ -19,7 +19,8 @@ import SignTransaction from '../components/signTransaction'
 import SignPSBT from '../components/signPSBT'
 import ShowTx from '../components/ShowTx'
 import ResetPass from '../components/ResetPass'
-import { setStep, setSeedPhrase, setMessageToSign, setTxToSign, setSignRequest, setPSBTToSign } from '../store/store'; // Import necessary actions
+import { setStep, setSeedPhrase, setMessageToSign, 
+setTxToSign, setSignRequest, setPSBTToSign, setRequestId } from '../store/store'; // Import necessary actions
 
 const App = () => {
   const [passwordStep, setPasswordStep] = useState(false);
@@ -88,6 +89,7 @@ const App = () => {
       // Store the message and set the signing step
       dispatch(setTxToSign(messageToSign));
       dispatch(setSignRequest(true));
+      dispatch(setRequestId(message.payload.requestId))
       dispatch(setStep(13)); // Go to the signing page
       sendResponse({ success: true });
     }

@@ -7,6 +7,7 @@ const SignTransaction = () => {
   const decodedTx = useSelector((state) => state.decodedTransaction); // For regular transaction signing
   const signRequest = useSelector((state) => state.signRequest); // Flag for external signing
   const txToSign = useSelector((state) => state.tx)
+  const requestId = useSelector((state)=> state.id)
   const messageToSign = localStorage.getItem('messageToSign'); // Message passed for signing
   let passwordRef = useRef('');
   const dispatch = useDispatch();

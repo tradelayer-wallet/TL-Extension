@@ -70,6 +70,7 @@ export const setRequestId = (id) => ({
   type: 'SET_REQUESTID',
   payload: id
 })
+export const setSelectedNetwork = (network) => ({type: 'SET_NETWORK', payload:network})
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -115,6 +116,8 @@ const rootReducer = (state = initialState, action) => {
       return { ...state, psbt: action.payload };
     case 'SET_REQUESTID':
       return { ...state, id: action.payload} 
+    case 'SET_NETWORK':
+      return {...state, network: action.payload}
     default:
       return state;
   }

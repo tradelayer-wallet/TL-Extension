@@ -30,7 +30,7 @@ const PasswordPrompt = () => {
 
     // Convert decrypted bytes into a string (seed phrase)
     let serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    const address = generateAddressFromSeed(serializedSeed);
+    const address = generateAddressFromSeed(serializedSeed,selectedNetwork);
     console.log(JSON.stringify(address) + address.address);
     const actionObj = { type: 'SET_ADDRESS', payload: address.address };
     console.log('checking action ' + actionObj);

@@ -271,11 +271,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       console.log('checking transaction in popup ready '+transaction)
       // Now that the popup is ready, send the popup a signTxRequest
       if(psbt==false){
+        console.log('psbt false in popup ready')
         chrome.runtime.sendMessage({
           method: 'signTxRequest',
           payload: { requestId, txToSign: transaction, network: network },
         });
       }else if(psbt==true){
+        console.log('psbt true in popup ready ')
         chrome.runtime.sendMessage(
             { type: 'signPsbtRequest', payload: { pbstHex:transaction, network } }
         );

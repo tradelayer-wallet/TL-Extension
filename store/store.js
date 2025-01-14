@@ -66,7 +66,7 @@ export const setConfirmationPasswordValue = (password) =>({type: 'SET_CONFIRMATI
 export const setPubKey = (pubKey) =>({type: 'SET_PUBKEY', payload:pubKey})
 export const setPSBTToSign = (psbtHex, redeemKey) => ({
   type: 'SET_PSBT',
-  payload: { psbtHex, redeemKey },
+  payload: { psbtHex},
 });
 export const setRequestId = (id) => ({
   type: 'SET_REQUESTID',

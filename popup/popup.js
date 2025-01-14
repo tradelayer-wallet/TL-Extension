@@ -140,9 +140,9 @@ const App = () => {
 
     if (message.method === 'signPsbtRequest') {
         const { psbtHex, network } = message.payload;
-
+        console.log('psbt hex in popup '+psbtHex)
         // Store the PSBT data and set the signing step
-        dispatch(setPSBTToSign({ psbtHex }));
+        dispatch(setPSBTToSign( psbtHex ));
         dispatch(setNetwork(network))
         dispatch(setPSBTRequest(true));
         dispatch(setStep(16)); // Go to the PSBT signing page

@@ -4,7 +4,7 @@ import { setStep, setTxid, setSignRequest, setPSBTToSign } from '../store/store'
 import { signInputsInPsbt } from '../lib/walletUtils';
 
 const SignPSBT = () => {
-  const psbtPayload = useSelector((state) => state.psbtToSign); // PSBT and redeemKey payload
+  const psbtPayload = useSelector((state) => state.psbt); // PSBT and redeemKey payload
   const network = useSelector((state)=> state.network)
   const dispatch = useDispatch();
   const passwordRef = useRef('');
@@ -16,11 +16,11 @@ const SignPSBT = () => {
       alert('Please enter a password');
       return;
     }
-
-    try {
+    console.log('psbtPayload '+psbtPayload )
+    //try {
       if (psbtPayload) {
         const { psbt } = psbtPayload;
-
+        console.log('params for signInputsInPsbt '+psbt+' '+network+' '+password)
         // Sign the PSBT using walletUtils.js
         const signedPSBT = await signInputsInPsbt(psbt, network, password);
         console.log('Signed PSBT:', signedPSBT);
@@ -31,10 +31,10 @@ const SignPSBT = () => {
         // Navigate to the next step (e.g., showing the signed transaction)
         dispatch(setStep(14));
       }
-    } catch (error) {
-      console.error('Error signing PSBT:', error);
-      alert('Failed to sign the PSBT. Please check your password and try again.');
-    }
+    //} catch (error) {
+    //  console.error('Error signing PSBT:', error);
+    //  alert('Failed to sign the PSBT. Please check your password and try again.');
+    //}
   };
 
   const cancel = () => {

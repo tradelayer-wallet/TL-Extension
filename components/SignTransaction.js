@@ -8,6 +8,7 @@ const SignTransaction = () => {
   const signRequest = useSelector((state) => state.signRequest); // Flag for external signing
   const txToSign = useSelector((state) => state.tx)
   const requestId = useSelector((state)=> state.id)
+  const network = useSelector((state)=> state.network)
   const messageToSign = localStorage.getItem('messageToSign'); // Message passed for signing
   let passwordRef = useRef('');
   const dispatch = useDispatch();
@@ -42,7 +43,7 @@ const SignTransaction = () => {
       } else if (txToSign) {*/
         // Regular transaction signing flow
         console.log('password '+JSON.stringify(password))
-        const txid = await signTransaction(txToSign, password);
+        const txid = await signTransaction(txToSign, password, network);
         password =null
         dispatch(setTxid(txid));
         chrome.runtime.sendMessage({

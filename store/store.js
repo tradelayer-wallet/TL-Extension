@@ -36,6 +36,7 @@ const SET_ADDRESS = 'SET_ADDRESS'
 const SET_ENCRYPTED_KEY = "SET_ENCRYPTED_KEY"
 const SET_DECODED_TX = "SET_DECODED_TX"
 const SET_TXID = "SET_TXID"
+const SET_NETWORK = "SET_NETWORK"
 
 const handleNextStep = () => {
   const currentStep = useSelector(state => state.step);
@@ -60,6 +61,7 @@ export const setTxid = (txid) => ({ type: SET_TXID, payload: txid });
 export const setMessageToSign = (message) => ({type: 'SET_MESSAGE', payload: message})
 export const setTxToSign = (tx) => ({type: 'SET_TX_TOSIGN', payload: tx})
 export const setSignRequest = (flag) => ({type: 'SET_SIGNREQUEST', payload: flag})
+export const setPSBTRequest = (flag) => ({type: 'SET_PSBTREQUEST', payload: flag})
 export const setConfirmationPasswordValue = (password) =>({type: 'SET_CONFIRMATIONPASSWORD', payload:password})
 export const setPubKey = (pubKey) =>({type: 'SET_PUBKEY', payload:pubKey})
 export const setPSBTToSign = (psbtHex, redeemKey) => ({
@@ -70,7 +72,7 @@ export const setRequestId = (id) => ({
   type: 'SET_REQUESTID',
   payload: id
 })
-export const setSelectedNetwork = (network) => ({type: 'SET_NETWORK', payload:network})
+export const setNetwork = (network) => ({type: SET_NETWORK, payload:network})
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -110,6 +112,8 @@ const rootReducer = (state = initialState, action) => {
       return {...state, tx: action.payload}
     case 'SET_SIGNREQUEST':
       return {...state, signRequest: action.payload}
+    case 'SET_PSBTREQUEST':
+      return {...state, signPSBT: action.payload}
     case 'SET_PUBKEY':
       return {...state, pubkey: action.payload} 
     case 'SET_PSBT':

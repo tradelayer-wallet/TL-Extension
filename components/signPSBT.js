@@ -5,6 +5,7 @@ import { signInputsInPsbt } from '../lib/walletUtils';
 
 const SignPSBT = () => {
   const psbtPayload = useSelector((state) => state.psbtToSign); // PSBT and redeemKey payload
+  const network = useSelector((state)=> state.network)
   const dispatch = useDispatch();
   const passwordRef = useRef('');
 
@@ -18,10 +19,10 @@ const SignPSBT = () => {
 
     try {
       if (psbtPayload) {
-        const { psbt, redeemKey } = psbtPayload;
+        const { psbt } = psbtPayload;
 
         // Sign the PSBT using walletUtils.js
-        const signedPSBT = await signInputsInPsbt(psbt, redeemKey, password);
+        const signedPSBT = await signInputsInPsbt(psbt, network, password);
         console.log('Signed PSBT:', signedPSBT);
         passwordRef.current.value =''
         // Dispatch the signed PSBT or transaction ID

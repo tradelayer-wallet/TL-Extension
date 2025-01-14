@@ -19,6 +19,7 @@ import SignTransaction from '../components/signTransaction'
 import SignPSBT from '../components/signPSBT'
 import ShowTx from '../components/ShowTx'
 import ResetPass from '../components/ResetPass'
+import {addMultisigAddress, buildUnsignedPSBT} from '../lib/walletUtils'
 import { setStep, setSeedPhrase, setMessageToSign, 
 setTxToSign, setSignRequest, setPSBTToSign, setRequestId } from '../store/store'; // Import necessary actions
 
@@ -83,11 +84,54 @@ const App = () => {
       sendResponse({ success: true, accounts });
     }
 
+    if(message.method ==='buildUTXOTrade'){
+      const { config, outputs, network, satsPaid } = message.payload
+      console.log('inside popup utxo trade '+JSON.stringify(message.payload))
+      console.log('config buyerKeyPair is '+JSON.stringify(config.buyerKeyPair))
+
+        try{
+          const psbt = buildUnsignedPSBT({
+          buyerKeyPair: config.buyerKeyPair,
+          sellerKeyPair: config.sellerKeyPair,
+          amount: config.amount,
+          payload: config.payload,
+          commitUTXOs: config.commitUTXOs,
+          outputs: outputs,
+          network: network,
+          satsPaid: satsPaid
+        });
+      sendResponse({ success: true, result: psbt });
+
+      }catch (error) {
+        console.error('Error in walletUtils buildUTXOTrade:', error.message);
+        sendResponse({ success: false, error: error.message });
+      }
+    }
+
+    if (message.method === 'addMultisigToWallet') {
+      try {
+        const { m, pubkeys, network } = message.payload;
+
+        if (!m || !pubkeys || !Array.isArray(pubkeys)) {
+          sendResponse({ success: false, error: 'Invalid payload for addMultisigAddress' });
+          return;
+        }
+
+        const result = addMultisigAddress(m, pubkeys, network); // Execute the function here
+        sendResponse({ success: true, result });
+      } catch (error) {
+        console.error('Error in addMultisig:', error.message);
+        sendResponse({ success: false, error: error.message });
+      }
+    }
+
     if (message.method === 'signTxRequest') {
       const messageToSign = message.payload.txToSign;
+      const network = message.payload.network
       console.log('inside signTxRequest '+messageToSign+' '+JSON.stringify(message.payload))
       // Store the message and set the signing step
       dispatch(setTxToSign(messageToSign));
+      dispatch(setNetwork(network))
       dispatch(setSignRequest(true));
       dispatch(setRequestId(message.payload.requestId))
       dispatch(setStep(13)); // Go to the signing page
@@ -95,12 +139,13 @@ const App = () => {
     }
 
     if (message.method === 'signPsbtRequest') {
-        const { psbtHex, redeemKey } = message.payload;
+        const { psbtHex, network } = message.payload;
 
         // Store the PSBT data and set the signing step
-        dispatch(setPSBTToSign({ psbtHex, redeemKey }));
-        dispatch(setSignRequest(true));
-        dispatch(setStep(14)); // Go to the PSBT signing page
+        dispatch(setPSBTToSign({ psbtHex }));
+        dispatch(setNetwork(network))
+        dispatch(setPSBTRequest(true));
+        dispatch(setStep(16)); // Go to the PSBT signing page
         sendResponse({ success: true });
     }
   });

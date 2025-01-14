@@ -6,6 +6,7 @@ const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnM
 const IPINFO_TOKEN = "5992daa04f9275";
 const VPNAPI_KEY = "5b2a56ec9bdd4db1bc4ba4e6190d51b2"
 
+
 function openPopup(step=13,  payload = null) {
   const params = new URLSearchParams();
   params.append('step', step);
@@ -36,6 +37,44 @@ function closePopup() {
   } else {
     console.warn('No popup window to close');
   }
+}
+
+function ensurePopup(step = 13, payload = null, callback) {
+  // Check if the popup is already open
+  chrome.windows.getAll({ populate: true }, (windows) => {
+    const existingPopup = windows.find(
+      (win) => win.id === popupWindowId && win.type === 'popup'
+    );
+
+    if (existingPopup) {
+      // Popup is already open, send the request
+      console.log('Popup already open');
+      callback(); // Continue processing
+      return;
+    }
+
+    // Open a new popup window
+    const params = new URLSearchParams();
+    params.append('step', step);
+    params.append('message', payload);
+
+    const popupUrl = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
+    chrome.windows.create(
+      {
+        url: popupUrl,
+        type: 'popup',
+        width: 400,
+        height: 600,
+      },
+      (newPopup) => {
+        popupWindowId = newPopup.id; // Save the new popup ID
+        console.log('Popup opened:', newPopup);
+
+        // Wait for the popup to be ready
+        setTimeout(callback, 500); // Delay before calling callback (adjust as needed)
+      }
+    );
+  });
 }
 
 let accounts = ['12342134']; // Manage your accounts here
@@ -74,7 +113,112 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true; // Keep port open for async response
     }
 
-    case 'signMessage': {
+
+  case 'addMultisig': {
+  console.log('Handling addMultisig with payload:', payload);
+
+  const { m, pubkeys, network } = payload.params;
+
+  // Validation Check
+  if (!m || !pubkeys || !Array.isArray(pubkeys)) {
+    console.error("Invalid payload for addMultisig:", payload);
+    sendResponse({ success: false, error: "Invalid payload for addMultisig", payload });
+    return true; // Exit early
+  }
+
+  // Check if the multisig already exists in localStorage
+  chrome.storage.local.get(['multisigs'], (result) => {
+    const multisigs = JSON.parse(result.multisigs || '[]');
+    const existing = multisigs.find((ms) =>
+      ms.pubkeys.every((key, i) => key === pubkeys[i]) && ms.m === m
+    );
+
+    if (existing) {
+      console.log('Multisig already exists:', existing);
+      sendResponse({ success: true, result: existing, payload });
+      return; // Exit early if existing
+    }
+
+    console.log('No existing multisig found. Proceeding to add.');
+
+    // Open the popup (if needed) and process the request
+    ensurePopup(13, { m, pubkeys, network }, () => {
+      console.log('Popup ready for addMultisig. Sending addMultisigToWallet message.');
+
+      chrome.runtime.sendMessage(
+        {
+          method: 'addMultisigToWallet',
+          payload: { m, pubkeys, network }, // Pass the payload
+        },
+        (response) => {
+          if (response?.success) {
+            console.log('Successfully added multisig:', response.result);
+            closePopup();
+            sendResponse({ success: true, result: response.result, payload });
+          } else {
+            console.error('Error in addMultisigToWallet:', response.error);
+            closePopup();
+            sendResponse({ success: false, error: response.error, payload });
+          }
+        }
+      );
+    });
+  });
+
+  return true; // Keep port open for async response
+}
+
+
+
+  case "buildUTXOTrade": {
+    console.log("buildUTXOTrade triggered with payload:", payload);
+    //try {
+      let { config, outputs, network, satsPaid } = payload.params || {};
+      if(!network){network ="LTCTEST"}
+      // Validation
+      if (!config || !outputs) {
+        console.error("Missing config or outputs in buildUTXOTrade payload:", payload);
+        sendResponse({ success: false, error: "Missing config or outputs in payload", payload });
+        return true; // Exit early
+      }
+
+      if (!config.buyerKeyPair || !config.sellerKeyPair || !config.amount) {
+        console.error("Missing required fields in buildUTXOTrade config:", config);
+        sendResponse({ success: false, error: "Missing required fields in config", payload });
+        return true; // Exit early
+      }
+
+      ensurePopup(13, { config, outputs, network, satsPaid }, () => {
+      console.log('Popup ready for build utxo trade.');
+
+      chrome.runtime.sendMessage(
+        {
+          method: 'buildUTXOTrade',
+          payload: { config,outputs, network, satsPaid }, // Pass the payload
+        },
+        (response) => {
+          if (response?.success) {
+            console.log('Successfully build utxo trade:', response.result);
+            closePopup();
+            sendResponse({ success: true, result: response.result, payload });
+          } else {
+            console.error('Error in build utxo trade:', response.error);
+            closePopup();
+            sendResponse({ success: false, error: response.error, payload });
+          }
+        }
+      );
+    });
+    //} catch (error) {
+    //  console.error("Error in buildUTXOTrade:", error.message);
+    //  sendResponse({ success: false, error: error.message, payload: payload });
+    //}
+
+    return true; // Keep the message port open for async response
+  }
+
+
+  case 'signMessage': {
       console.log('message payload '+payload.params.message)
       openPopup(13, payload.params.message)
       console.log('Requesting popup to sign message...' +message);
@@ -95,14 +239,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     case 'signTransaction': {
       // 1) Grab the transaction from the payload
-      const { transaction } = payload.params;
+      const { transaction, network } = payload.params;
       console.log('Transaction to sign:', transaction, payload);
 
       // 2) Generate some ID for correlating request/response
       const requestId = Date.now().toString(); 
-      
+      const flag = false
       // 3) Store this `sendResponse` so we can call it later
-      pendingRequests[requestId] = { sendResponse, payload };
+      pendingRequests[requestId] = { sendResponse, payload, flag };
 
       // 4) Open the popup with a `step=13` and pass the requestId in the query
       openPopup(13, requestId);
@@ -123,13 +267,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
 
       // We have the transaction in requestEntry.payload.params.transaction
-      const { transaction } = requestEntry.payload.params;
+      const { transaction, network, psbt } = requestEntry.payload.params;
       console.log('checking transaction in popup ready '+transaction)
       // Now that the popup is ready, send the popup a signTxRequest
-      chrome.runtime.sendMessage({
-        method: 'signTxRequest',
-        payload: { requestId, txToSign: transaction },
-      });
+      if(psbt==false){
+        chrome.runtime.sendMessage({
+          method: 'signTxRequest',
+          payload: { requestId, txToSign: transaction, network: network },
+        });
+      }else if(psbt==true){
+        chrome.runtime.sendMessage(
+            { type: 'signPsbtRequest', payload: { pbstHex:transaction, network } }
+        );
+      }
+      
 
       break;
     }
@@ -162,23 +313,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'signPsbt': {
-        const { psbtHex, redeemKey } = payload;
+        const { psbtHex, network } = payload;
 
-        console.log('Requesting popup to sign PSBT:', { psbtHex, redeemKey });
+        console.log('Requesting popup to sign PSBT:', { psbtHex, network });
 
-        openPopup();
-        chrome.runtime.sendMessage(
-            { type: 'signPsbtRequest', payload: { psbtHex, redeemKey } },
-            (response) => {
-                if (response?.success) {
-                    console.log('PSBT signed:', response.signedPsbt);
-                    sendResponse({ success: true, signedPsbt: response.signedPsbt });
-                } else {
-                    console.error('Failed to sign PSBT');
-                    sendResponse({ success: false, error: 'Sign PSBT failed' });
-                }
-            }
-        );
+        // 2) Generate some ID for correlating request/response
+      const requestId = Date.now().toString(); 
+      const flag = true      
+      // 3) Store this `sendResponse` so we can call it later
+      pendingRequests[requestId] = { sendResponse, payload, flag };
+
+      // 4) Open the popup with a `step=13` and pass the requestId in the query
+      openPopup(16, requestId);
         return true; // Keep port open for async response
     }
 
@@ -367,128 +513,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true
 });
-
-
-/*chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const { type, payload } = message;
-
-  console.log('Message received in background script:', type, payload);
-
-  switch (payload.method) {
-    case 'requestAccounts': {
-      console.log('Connect Wallet request received');
-       chrome.runtime.sendMessage(
-        { type: 'getAccount' },
-        (response) => {
-          console.log('Popup response:', response);
-          if (response?.success) {
-            accounts = response.accounts; // Update accounts if returned
-            sendResponse({ success: true, accounts });
-          } else {
-            sendResponse({ success: false, error: 'Failed to retrieve accounts.' });
-          }
-        }
-      );
-
-      // Notify the content script about accounts and network changes
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'accountsChanged',
-            accounts: accounts,
-          });
-          chrome.tabs.sendMessage(tabs[0].id, {
-            type: 'networkChanged',
-            network: network,
-          });
-        }
-      });
-
-      break;
-    }
-
-    case 'signMessage': {
-      console.log('Sign Message request received');
-      chrome.runtime.sendMessage(
-        {
-          type: 'signRequest',
-          payload: { messageToSign: payload?.message },
-        },
-        (response) => {
-          if (response?.success) {
-            console.log('Popup is handling the sign request');
-          } else {
-            console.error('Failed to prompt signing in popup');
-          }
-        }
-      );
-      break;
-    }
-
-    case 'signTransaction': {
-      console.log('Sign Transaction request received');
-      chrome.runtime.sendMessage(
-        {
-          type: 'signTxRequest',
-          payload: { transaction: payload?.transaction },
-        },
-        (response) => {
-          if (response?.success) {
-            console.log('Popup is handling the transaction signing request');
-          } else {
-            console.error('Failed to prompt transaction signing in popup');
-          }
-        }
-      );
-      break;
-    }
-
-    case 'signResponse': {
-      console.log('Sign Response received');
-      const { success, signedMessage } = payload;
-      if (success) {
-        console.log('Signed message received:', signedMessage);
-        // Handle broadcasting or further actions with the signed message.
-      } else {
-        console.error('Error signing the message');
-      }
-      break;
-    }
-
-  /*  case 'SEND_TRANSACTION': {
-      console.log('Send Transaction request received');
-      sendTransaction(payload.tx)
-        .then((response) => sendResponse({ success: true, response }))
-        .catch((error) => sendResponse({ success: false, error: error.message }));
-      return true; // Indicate async response.
-    }
-
-    case 'CONNECT_WEBSOCKET': {
-      console.log('Connect WebSocket request received');
-      if (!isConnected) {
-        connectWebSocket();
-      }
-      sendResponse({ success: true });
-      break;
-    }
-
-    case 'DISCONNECT_WEBSOCKET': {
-      console.log('Disconnect WebSocket request received');
-      if (socket) {
-        socket.close();
-        sendResponse({ success: true });
-      } else {
-        sendResponse({ success: false, error: 'WebSocket not connected' });
-      }
-      break;
-    }
-
-    default: {
-      console.error(`Unknown message type: ${type}`);
-      sendResponse({ success: false, error: 'Unknown message type' });
-    }
-  }
-
-  return true; // Indicate async response.
-});*/
 

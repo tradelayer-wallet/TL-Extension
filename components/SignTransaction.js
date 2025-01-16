@@ -20,6 +20,7 @@ const SignTransaction = () => {
       return;
     }
     
+    console.log('request id intact? '+requestId)
     console.log('inside sign '+signRequest+' '+txToSign)
     passwordRef.current.value=null
     //try {

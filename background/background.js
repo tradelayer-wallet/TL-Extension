@@ -83,7 +83,7 @@ let network = 'mainnet'; // Manage your network state
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const { method, payload } = message;
 
-  console.log('Message received in background script:', method, payload);
+  console.log('Message received in background script:', method, JSON.stringify(payload));
   switch (method) {
 
    case 'requestAccounts': {
@@ -244,9 +244,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       // 2) Generate some ID for correlating request/response
       const requestId = Date.now().toString(); 
-      const flag = false
       // 3) Store this `sendResponse` so we can call it later
-      pendingRequests[requestId] = { sendResponse, payload, flag };
+      pendingRequests[requestId] = { sendResponse, payload };
 
       // 4) Open the popup with a `step=13` and pass the requestId in the query
       openPopup(13, requestId);
@@ -257,33 +256,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
      case 'popupReady': {
       const { requestId } = payload;
-      console.log(`Popup is ready for requestId=${requestId}`);
+      console.log('Popup is ready for requestId= '+JSON.stringify(requestId));
 
       // Retrieve the "pending request" data
       const requestEntry = pendingRequests[requestId];
+       console.log('Request Entry:', requestEntry);
       if (!requestEntry) {
         console.error('No pending request found for requestId:', requestId);
         break;
       }
 
       // We have the transaction in requestEntry.payload.params.transaction
-      const { transaction, network, psbt } = requestEntry.payload.params;
+      const { transaction, network, sellerFlag } = requestEntry.payload.params;
+      console.log('request entry payload in popupReady '+JSON.stringify(requestEntry.payload))
+      if(requestEntry.payload.psbt){
+          const {psbtHex } = requestEntry.payload.params
+         console.log('psbt flag true in popupReady')
+         chrome.runtime.sendMessage({
+          method: 'signPsbtRequest',
+          payload: { requestId, txToSign: psbtHex, network: network, sellerFlag: sellerFlag },
+        });
+         break
+      }
       console.log('checking transaction in popup ready '+transaction)
       // Now that the popup is ready, send the popup a signTxRequest
-      if(psbt==false){
-        console.log('psbt false in popup ready')
         chrome.runtime.sendMessage({
           method: 'signTxRequest',
           payload: { requestId, txToSign: transaction, network: network },
         });
-      }else if(psbt==true){
-        console.log('psbt true in popup ready ')
-        chrome.runtime.sendMessage(
-            { type: 'signPsbtRequest', payload: { pbstHex:transaction, network } }
-        );
-      }
-      
-
       break;
     }
 
@@ -315,20 +315,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
     case 'signPsbt': {
-        const { psbtHex, network } = payload;
+  const { psbtHex, network, sellerFlag } = payload.params;
+  console.log('Requesting popup to sign PSBT:', { psbtHex, network, sellerFlag });
+  payload.psbt=true
+  const requestId = Date.now().toString();
+  pendingRequests[requestId] = { sendResponse, payload };
 
-        console.log('Requesting popup to sign PSBT:', { psbtHex, network });
+  console.log(`Ensuring popup is ready for requestId=${requestId}`);
 
-        // 2) Generate some ID for correlating request/response
-      const requestId = Date.now().toString(); 
-      const flag = true      
-      // 3) Store this `sendResponse` so we can call it later
-      pendingRequests[requestId] = { sendResponse, payload, flag };
+  // Use ensurePopup to open and prepare the popup
+  openPopup(16, requestId)
 
-      // 4) Open the popup with a `step=13` and pass the requestId in the query
-      openPopup(16, requestId);
-        return true; // Keep port open for async response
-    }
+  return true; // Keep the port open for async response
+}
+
 
 
     case 'keepAlive': {

@@ -68,7 +68,8 @@ export const setPSBTToSign = (psbtHex, redeemKey) => ({
   type: 'SET_PSBT',
   payload: { psbtHex},
 });
-export const setRequestId = (id) => ({
+export const setRequestId = (id) => (
+{
   type: 'SET_REQUESTID',
   payload: id
 })
@@ -113,12 +114,14 @@ const rootReducer = (state = initialState, action) => {
     case 'SET_SIGNREQUEST':
       return {...state, signRequest: action.payload}
     case 'SET_PSBTREQUEST':
+    console.log('Reducer updating sellerFlag to:', action.payload);
       return {...state, signPSBT: action.payload}
     case 'SET_PUBKEY':
       return {...state, pubkey: action.payload} 
     case 'SET_PSBT':
       return { ...state, psbt: action.payload };
     case 'SET_REQUESTID':
+      console.log('Reducer updating requestId to:', action.payload);
       return { ...state, id: action.payload} 
     case 'SET_NETWORK':
       return {...state, network: action.payload}

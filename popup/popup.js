@@ -21,7 +21,7 @@ import ShowTx from '../components/ShowTx'
 import ResetPass from '../components/ResetPass'
 import {addMultisigAddress, buildUnsignedPSBT} from '../lib/walletUtils'
 import { setStep, setSeedPhrase, setMessageToSign, 
-setTxToSign, setSignRequest, setPSBTToSign, setRequestId } from '../store/store'; // Import necessary actions
+setTxToSign, setSignRequest, setPSBTRequest, setPSBTToSign, setRequestId, setNetwork } from '../store/store'; // Import necessary actions
 
 const App = () => {
   const [passwordStep, setPasswordStep] = useState(false);
@@ -40,7 +40,7 @@ const App = () => {
     console.log('Step param:', stepParam);
     console.log('Message param:', decodedMessage);
    
-    if (stepParam === '13' && requestId) {
+    if ((stepParam === '13'||stepParam==='16') && requestId) {
       // Let the background script know this popup is ready
       chrome.runtime.sendMessage({
         method: 'popupReady',
@@ -125,26 +125,38 @@ const App = () => {
       }
     }
 
-    if (message.method === 'signTxRequest') {
+   if (message.method === 'signTxRequest') {
       const messageToSign = message.payload.txToSign;
-      const network = message.payload.network
-      console.log('inside signTxRequest '+messageToSign+' '+JSON.stringify(message.payload))
+      const network = message.payload.network;
+      const requestId = message.payload.requestId;
+
+      console.log('inside signTxRequest:', messageToSign, JSON.stringify(message.payload));
+
+      // Debugging: Log values before dispatch
+      console.log('Dispatching requestId:', requestId);
+
       // Store the message and set the signing step
       dispatch(setTxToSign(messageToSign));
-      dispatch(setNetwork(network))
+      dispatch(setNetwork(network));
       dispatch(setSignRequest(true));
-      dispatch(setRequestId(message.payload.requestId))
+      dispatch(setRequestId(requestId)); // Ensure this updates correctly
       dispatch(setStep(13)); // Go to the signing page
+
+      // Log Redux state after dispatches
+      console.log('Updated Redux state:', store.getState());
+
       sendResponse({ success: true });
     }
 
+
     if (message.method === 'signPsbtRequest') {
-        const { psbtHex, network } = message.payload;
-        console.log('psbt hex in popup '+psbtHex)
+        const { txToSign, network, sellerFlag } = message.payload;
+        console.log('psbt hex in popup '+sellerFlag +' '+txToSign+' '+message.payload.requestId)
         // Store the PSBT data and set the signing step
-        dispatch(setPSBTToSign( psbtHex ));
+        dispatch(setPSBTToSign( txToSign ));
         dispatch(setNetwork(network))
-        dispatch(setPSBTRequest(true));
+        dispatch(setPSBTRequest(sellerFlag))
+        dispatch(setRequestId(message.payload.requestId))
         dispatch(setStep(16)); // Go to the PSBT signing page
         sendResponse({ success: true });
     }

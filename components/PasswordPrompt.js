@@ -1,23 +1,22 @@
 import React, { useState, useRef } from 'react';
 import CryptoJS from 'crypto-js';
-import { useDispatch } from 'react-redux';
-import { setSeedPhrase, setStep, setAddress, setEncryptedKey,setNetwork } from '../store/store';
-import { generateAddressFromSeed, encryptPrivateKey } from '../lib/walletUtils';
-
+import { useDispatch, useSelector } from 'react-redux';
+import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
+import { generateAddressFromSeed } from '../lib/walletUtils';
 
 const PasswordPrompt = () => {
   const [password, setPassword] = useState('');
-  const [selectedNetwork, setNetwork] = useState('mainnet'); // Default network
   const dispatch = useDispatch();
   const passwordRef = useRef('');
+  const selectedNetwork = useSelector((state) => state.network); // Accessing the network from Redux
 
-   const networks = [
+  const networks = [
     { id: 'litecoin', name: 'Litecoin', logo: '../images/ltc.png' },
     { id: 'litecoin-testnet', name: 'Litecoin Testnet', logo: '../images/tltc.png' },
   ];
 
   const handlePasswordSubmit = () => {
-    let password = passwordRef.current.value;
+    const password = passwordRef.current.value;
     passwordRef.current.value = '';
     const encryptedSeed = localStorage.getItem('encryptedSeed');
     if (!password) {
@@ -26,57 +25,31 @@ const PasswordPrompt = () => {
     }
 
     // Decrypt the seed phrase
-    let bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
-
-    // Convert decrypted bytes into a string (seed phrase)
-    let serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    const address = generateAddressFromSeed(serializedSeed,selectedNetwork);
-    console.log(JSON.stringify(address) + address.address);
-    const actionObj = { type: 'SET_ADDRESS', payload: address.address };
-    console.log('checking action ' + actionObj);
-    dispatch(actionObj);
-    if (address.publicKey) {
-      try {
-        const publicKeyArray = address.publicKey
-          .split(',')
-          .map((value) => parseInt(value.trim(), 10));
-        if (!Array.isArray(publicKeyArray) || publicKeyArray.some(isNaN)) {
-          console.log('Invalid publicKey format');
-        }
-
-        const serializedPubKey = Buffer.from(new Uint8Array(publicKeyArray)).toString('hex');
-        const pubkeyObj = { type: 'SET_PUBKEY', payload: serializedPubKey };
-        console.log('Pubkey hex:', serializedPubKey);
-        dispatch(pubkeyObj);
-      } catch (error) {
-        console.error('Error processing publicKey:', error);
-      }
-    }
-
-    const encryptedKey = CryptoJS.AES.encrypt(address.privateKey.toString(), password);
-
-    console.log('encrypted key ' + encryptedKey);
-    localStorage.setItem('encryptedKey', encryptedKey);
+    const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
+    const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
 
     if (serializedSeed && serializedSeed.trim().length > 0) {
-      serializedSeed = '';
-      bytes = '';
-      password = '';
-      dispatch(setStep(7)); // Close the password prompt and move to the next step
+      const addressData = generateAddressFromSeed(serializedSeed, selectedNetwork);
+      dispatch(setAddress(addressData.address));
+      dispatch(setPubKey(addressData.publicKey));
+      const encryptedKey = CryptoJS.AES.encrypt(addressData.privateKey.toString(), password);
+      localStorage.setItem('encryptedKey', encryptedKey);
+      dispatch(setStep(7)); // Proceed to the next step
     } else {
       alert('Incorrect password');
     }
   };
 
   const handleNetworkChange = (event) => {
-    setNetwork(event.target.value);
+    const networkId = event.target.value;
+    dispatch(setNetwork(networkId));
   };
 
   const selectedNetworkInfo = networks.find(
     (network) => network.id === selectedNetwork
   ) || networks[0];
 
-   return (
+  return (
     <div className="password-prompt-container">
       <div className="password-prompt-dropdown">
         <select

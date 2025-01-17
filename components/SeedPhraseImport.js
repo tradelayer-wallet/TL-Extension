@@ -2,29 +2,31 @@ import React, { useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { setSeedPhrase, setStep } from '../store/store';
 
-const SeedPhraseImport = () => {
+const ImportSeedPhrase = () => {
   const [seedWords, setSeedWords] = useState(Array(12).fill(''));
+  const dispatch = useDispatch();
 
   const handleInputChange = (e, index) => {
-    const value = e.target.value;
+    const value = e.target.value.trim();
     const newSeedWords = [...seedWords];
     newSeedWords[index] = value;
-    setSeedPhrase(newSeedWords);
+    setSeedWords(newSeedWords);
   };
 
   const handleImport = () => {
     if (seedWords.every(word => word !== '')) {
-      onSeedSubmit(seedWords.join(' '));
+      const seedPhrase = seedWords.join(' ');
+      dispatch(setSeedPhrase(seedPhrase));
+      dispatch(setStep(4)); // Proceed to the password setup step
     } else {
-      alert('Please fill in all the words');
+      alert('Please fill in all the words.');
     }
-    useDispatch(setStep(4))
   };
 
   return (
     <div>
       <h2>Import Seed Phrase</h2>
-      <p>Enter the 12 words from your backup seed phrase below:</p>
+      <p>Enter your 12-word seed phrase below:</p>
       <div className="seed-phrase-import">
         {seedWords.map((word, index) => (
           <input
@@ -41,4 +43,4 @@ const SeedPhraseImport = () => {
   );
 };
 
-export default SeedPhraseImport;
+export default ImportSeedPhrase;

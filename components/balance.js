@@ -5,53 +5,57 @@ import axios from 'axios'; // For API requests
 import account from './sidepit';
 
 const Balances = () => {
-  const [btcBalance, setBtcBalance] = useState(null);
+  const [btcBalance, setBtcBalance] = useState(0);
+  const [unconfirmed, setUnconfirmed] = useState(0)
   const [loading, setLoading] = useState(true);
   const [contractTicker, setContract] = useState('');
   const [position, setPosition] = useState(0);
+  const network = useSelector((state)=> state.network)
   const [pnl, setPNL] = useState(0);
   const dispatch = useDispatch();
   const address = useSelector((state) => state.address);
   const pubkey = useSelector((state) => state.pubkey); // Get pubkey from Redux
 
-  useEffect(() => {
-    if (address && pubkey) {
-      chrome.storage.local.set({ address, pubkey }, () => {
-        console.log('Address and pubkey saved to storage:', { address, pubkey });
-      });
-    } else if (address) {
-      chrome.storage.local.set({ address }, () => {
-        console.log('Address saved to storage:', { address });
-      });
+useEffect(() => {
+
+  const fetchBalance = () => {
+
+    let url = `https://api.layerwallet.com/address/utxo/${address}`;
+    if(network=="litecoin-testnet"){
+      url = `https://testnet-api.layerwallet.com/address/utxo/${address}`;
     }
 
+    console.log('pubkey in balance check '+pubkey+ typeof(pubkey))
+    axios
+      .post(url, { pubkey: pubkey })
+      .then((response) => {
+        const unspentUtxos = response.data;
+        const confirmed = unspentUtxos
+          .filter((utxo) => utxo.confirmations >= 1)
+          .reduce((sum, utxo) => sum + utxo.amount, 0);
 
-    const fetchBalance = () => {
-      const apiKey = '7d8e992e74fd5914722182aacc347a95fd3e9f8a';
-      const url = `https://rest.cryptoapis.io/blockchain-data/litecoin/testnet/addresses/${address}/balance`; // Insert the address into the URL
-      const headers = {
-        'Content-Type': 'application/json',
-        'X-API-Key': apiKey,
-      };
+        let unconfirmed = unspentUtxos
+          .filter((utxo) => utxo.confirmations < 1)
+          .reduce((sum, utxo) => sum + utxo.amount, 0);
+          // Ensure unconfirmed defaults to 0 if it's null or undefined
+unconfirmed = unconfirmed ?? 0;
+        console.log('LTC balance:', confirmed);
+        setBtcBalance(confirmed);
+        setUnconfirmed(unconfirmed);
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error('Error fetching balance:', error);
+        setLoading(false);
+      });
+  };
 
-      axios
-        .get(url, { headers })
-        .then((response) => {
-          console.log('LTC balance:', response.data.balance);
-          setBtcBalance(response.data.balance / 100000000); // Convert satoshis to LTC
-          setLoading(false);
-        })
-        .catch((error) => {
-          console.error('Error fetching balance:', error);
-          setLoading(false);
-        });
-    };
+  fetchBalance(); // Initial fetch
 
-    fetchBalance();
+  const interval = setInterval(fetchBalance, 60000); // Fetch balance every 60 seconds
 
-    const interval = setInterval(fetchBalance, 60000); // Fetch balance every 60 seconds
-    return () => clearInterval(interval); // Clear interval when component unmounts
-  }, [address]);
+  return () => clearInterval(interval); // Cleanup interval on component unmount
+}, [address, pubkey]);
 
   useEffect(() => {
     console.log('Type of address:', typeof address, JSON.stringify(address));
@@ -87,12 +91,16 @@ const Balances = () => {
         <p>Loading...</p>
       ) : (
         <>
-          <p className="contract-ticker">Position: {contractTicker || 'No Position'}</p>
-          <p className={pnl >= 0 ? 'pnl' : 'pnls-negative'}>PNL: {pnl}</p>
           <div className="balance">
             <span>LTC Balance: </span>
             <strong>{btcBalance || 'Loading...'}</strong>
           </div>
+           {unconfirmed !== null && unconfirmed !== undefined && (
+            <div className="balance">
+              <span>Unconfirmed:</span>
+              <strong>{unconfirmed}</strong>
+            </div>
+          )}
           <div className="wallet-address-display">
             <span className="wallet-text" title={address}>
               {`${address.slice(0, 6)}...${address.slice(-10)}`}
@@ -110,8 +118,6 @@ const Balances = () => {
 
           <div className="buttons-container">
             <button onClick={handleSend}>Send</button>
-            <button onClick={handleDeposit}>Token Swap</button>
-            <button onClick={handleWithdraw}>Provide Liquidity</button>
           </div>
           <div className="settings-button">
             <button onClick={goToSettings}>⚙️</button>

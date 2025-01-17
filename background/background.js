@@ -114,121 +114,73 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
 
 
-  case 'addMultisig': {
-  console.log('Handling addMultisig with payload:', payload);
+      case 'addMultisig': {
+      console.log('Handling addMultisig with payload:', payload);
 
-  const { m, pubkeys, network } = payload.params;
+      const { m, pubkeys, network } = payload.params;
 
-  // Validation Check
-  if (!m || !pubkeys || !Array.isArray(pubkeys)) {
-    console.error("Invalid payload for addMultisig:", payload);
-    sendResponse({ success: false, error: "Invalid payload for addMultisig", payload });
-    return true; // Exit early
-  }
-
-  // Check if the multisig already exists in localStorage
-  chrome.storage.local.get(['multisigs'], (result) => {
-  // Access the 'multisigs' property from the result object
-  let multisigs = result
-  console.log('Retrieved multisigs with default:', multisigs);
-
-  // Check if 'multisigs' is undefined or not an array
-  if (!Array.isArray(result)) {
-    multisigs = []; // Initialize as an empty array if not already an array
-  }
-
-  console.log('Retrieved multisigs:', multisigs);
-
-  // Check for existing multisig
-  const existing = multisigs.some(
-    (ms) =>
-      ms.m === m &&
-      ms.pubkeys.length === pubkeys.length &&
-      ms.pubkeys.every((key, index) => key === pubkeys[index])
-  );
-
-  if (existing) {
-    console.log('Multisig already exists:', existing);
-    sendResponse({ success: true, result: existing, payload });
-    return; // Exit early if existing
-  }
-
-  console.log('No existing multisig found. Proceeding to add.');
-    // Open the popup (if needed) and process the request
-    ensurePopup(13, { m, pubkeys, network }, () => {
-      console.log('Popup ready for addMultisig. Sending addMultisigToWallet message.');
-
-      chrome.runtime.sendMessage(
-        {
-          method: 'addMultisigToWallet',
-          payload: { m, pubkeys, network }, // Pass the payload
-        },
-        (response) => {
-          if (response?.success) {
-            console.log('Successfully added multisig:', response.result);
-            closePopup();
-            sendResponse({ success: true, result: response.result, payload });
-          } else {
-            console.error('Error in addMultisigToWallet:', response.error);
-            closePopup();
-            sendResponse({ success: false, error: response.error, payload });
-          }
-        }
-      );
-    });
-  });
-});
-  return true; // Keep port open for async response
-}
-
-
-
-  case "buildUTXOTrade": {
-    console.log("buildUTXOTrade triggered with payload:", payload);
-    //try {
-      let { config, outputs, network, satsPaid } = payload.params || {};
-      if(!network){network ="LTCTEST"}
-      // Validation
-      if (!config || !outputs) {
-        console.error("Missing config or outputs in buildUTXOTrade payload:", payload);
-        sendResponse({ success: false, error: "Missing config or outputs in payload", payload });
+      // Validation Check
+      if (!m || !pubkeys || !Array.isArray(pubkeys)) {
+        console.error('Invalid payload for addMultisig:', payload);
+        sendResponse({ success: false, error: 'Invalid payload for addMultisig', payload });
         return true; // Exit early
       }
 
-      if (!config.buyerKeyPair || !config.sellerKeyPair || !config.amount) {
-        console.error("Missing required fields in buildUTXOTrade config:", config);
-        sendResponse({ success: false, error: "Missing required fields in config", payload });
-        return true; // Exit early
-      }
+      // Retrieve existing multisigs from chrome.storage.local
+      chrome.storage.local.get(['multisigs'], (result) => {
+        let multisigs = result.multisigs || [];
+        console.log('Retrieved multisigs:', multisigs);
 
-      ensurePopup(13, { config, outputs, network, satsPaid }, () => {
-      console.log('Popup ready for build utxo trade.');
+        // Check for existing multisig
+        const existing = multisigs.find(
+          (ms) =>
+            ms.m === m &&
+            ms.pubkeys.length === pubkeys.length &&
+            ms.pubkeys.every((key, index) => key === pubkeys[index])
+        );
 
-      chrome.runtime.sendMessage(
-        {
-          method: 'buildUTXOTrade',
-          payload: { config,outputs, network, satsPaid }, // Pass the payload
-        },
-        (response) => {
-          if (response?.success) {
-            console.log('Successfully build utxo trade:', response.result);
-            closePopup();
-            sendResponse({ success: true, result: response.result, payload });
-          } else {
-            console.error('Error in build utxo trade:', response.error);
-            closePopup();
-            sendResponse({ success: false, error: response.error, payload });
-          }
+        if (existing) {
+          console.log('Multisig already exists:', existing);
+          sendResponse({ success: true, result: existing, payload });
+          return; // Exit early if existing
         }
-      );
-    });
-    //} catch (error) {
-    //  console.error("Error in buildUTXOTrade:", error.message);
-    //  sendResponse({ success: false, error: error.message, payload: payload });
-    //}
 
-    return true; // Keep the message port open for async response
-  }
+        console.log('No existing multisig found. Proceeding to add.');
+
+        // Open the popup (if needed) and process the request
+        ensurePopup(14, { m, pubkeys, network }, () => {
+          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message.');
+
+          chrome.runtime.sendMessage(
+            {
+              method: 'addMultisigToWallet',
+              payload: { m, pubkeys, network }, // Pass the payload
+            },
+            (response) => {
+              if (response?.success) {
+                console.log('Successfully added multisig:', response.result);
+
+                // Add the new multisig to the list
+                multisigs.push({ m, pubkeys, network });
+
+                // Save the updated multisigs list back to chrome.storage.local
+                chrome.storage.local.set({ multisigs }, () => {
+                  console.log('Updated multisigs saved.');
+                  closePopup();
+                  sendResponse({ success: true, result: response.result, payload });
+                });
+              } else {
+                console.error('Error in addMultisigToWallet:', response.error);
+                closePopup();
+                sendResponse({ success: false, error: response.error, payload });
+              }
+            }
+          );
+        });
+      });
+
+      return true; // Keep port open for async response
+    }
 
 
   case 'signMessage': {

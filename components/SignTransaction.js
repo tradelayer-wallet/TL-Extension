@@ -12,13 +12,21 @@ const SignTransaction = () => {
   const messageToSign = localStorage.getItem('messageToSign'); // Message passed for signing
   let passwordRef = useRef('');
   const dispatch = useDispatch();
+const address = useSelector((state) => state.address);
 
- const checkPassword = (password) => {
+ const checkPassword = async (password) => {
+      try{
       const encryptedSeed = localStorage.getItem('encryptedSeed');
       if (!encryptedSeed) return false;
-
+      const expectedAddress = chrome
       // Attempt to decrypt
-      return checkPasswordMatch(encryptedSeed, password);
+      return await checkPasswordMatch(encryptedSeed, password,network,address);
+
+      }catch{
+        console.log('err in checkPassword implies bad password')
+        return false
+      }
+      
   };
 
 

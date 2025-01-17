@@ -214,7 +214,7 @@ h2 {
   flex-direction: column;
   align-items: center;
   overflow: hidden; /* Hide overflow */
-  height: calc(100vh - 100px); /* Dynamically adjust height relative to viewport */
+  height: 250px; /* Dynamically adjust height relative to viewport */
   box-sizing: border-box; /* Include padding in height/width calculations */
   margin: 0;
   padding: 0;

@@ -10,14 +10,15 @@ const SignPSBT = () => {
   const requestId = useSelector((state)=> state.id)
   const dispatch = useDispatch();
   const passwordRef = useRef('');
+  const address = useSelector((state) => state.address);
 
  const checkPassword = async (password) => {
       try{
       const encryptedSeed = localStorage.getItem('encryptedSeed');
       if (!encryptedSeed) return false;
-
+      const expectedAddress = chrome
       // Attempt to decrypt
-      return await checkPasswordMatch(encryptedSeed, password);
+      return await checkPasswordMatch(encryptedSeed, password,network,address);
 
       }catch{
         console.log('err in checkPassword implies bad password')
@@ -29,7 +30,7 @@ const SignPSBT = () => {
   const sign = async () => {
     const password = passwordRef.current.value;
     console.log('request id intact? '+requestId)
-    const valid = await checkPassword(password)
+    const valid = await checkPasswordMatch(password)
     console.log('password valid? '+valid)
     if (!password) {
       alert('Please enter a password');

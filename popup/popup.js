@@ -112,7 +112,7 @@ const App = () => {
       try {
         const { m, pubkeys, network } = message.payload;
 
-        if (!m || !pubkeys || !Array.isArray(pubkeys)) {
+        if (!m || !pubkeys || !Array.isArray(pubkeys)||!network) {
           sendResponse({ success: false, error: 'Invalid payload for addMultisigAddress' });
           return;
         }

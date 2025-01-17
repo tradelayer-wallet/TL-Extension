@@ -1,7 +1,7 @@
 import React, { useRef } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setStep, setTxid, setSignRequest, setPSBTToSign } from '../store/store';
-import { signInputsInPsbt } from '../lib/walletUtils';
+import { signInputsInPsbt, checkPasswordMatch } from '../lib/walletUtils';
 
 const SignPSBT = () => {
   const psbtPayload = useSelector((state) => state.psbt); // PSBT and redeemKey payload
@@ -11,16 +11,39 @@ const SignPSBT = () => {
   const dispatch = useDispatch();
   const passwordRef = useRef('');
 
+ const checkPassword = async (password) => {
+      try{
+      const encryptedSeed = localStorage.getItem('encryptedSeed');
+      if (!encryptedSeed) return false;
+
+      // Attempt to decrypt
+      return await checkPasswordMatch(encryptedSeed, password);
+
+      }catch{
+        console.log('err in checkPassword implies bad password')
+        return false
+      }
+      
+  };
+
   const sign = async () => {
     const password = passwordRef.current.value;
     console.log('request id intact? '+requestId)
+    const valid = await checkPassword(password)
+    console.log('password valid? '+valid)
     if (!password) {
       alert('Please enter a password');
       return;
     }
+    if (!valid){
+      console.log('password Invalid')
+      alert('Invalid password')
+      return
+    }
+
     console.log('psbtPayload '+JSON.stringify(psbtPayload ))
     //try {
-      if (psbtPayload) {
+      if (psbtPayload&&valid) {
         console.log('params for signInputsInPsbt '+psbtPayload.psbtHex+' '+network+' '+password+' '+sellerFlag)
         // Sign the PSBT using walletUtils.js
         const signedPSBT = await signInputsInPsbt(psbtPayload.psbtHex, network, password,sellerFlag);

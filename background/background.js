@@ -39,7 +39,7 @@ function closePopup() {
   }
 }
 
-function ensurePopup(step = 13, payload = null, callback) {
+function ensurePopup(step = 14, payload = null, callback) {
   // Check if the popup is already open
   chrome.windows.getAll({ populate: true }, (windows) => {
     const existingPopup = windows.find(
@@ -128,19 +128,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Check if the multisig already exists in localStorage
   chrome.storage.local.get(['multisigs'], (result) => {
-    const multisigs = JSON.parse(result.multisigs || '[]');
-    const existing = multisigs.find((ms) =>
-      ms.pubkeys.every((key, i) => key === pubkeys[i]) && ms.m === m
-    );
+  // Access the 'multisigs' property from the result object
+  let multisigs = result
+  console.log('Retrieved multisigs with default:', multisigs);
 
-    if (existing) {
-      console.log('Multisig already exists:', existing);
-      sendResponse({ success: true, result: existing, payload });
-      return; // Exit early if existing
-    }
+  // Check if 'multisigs' is undefined or not an array
+  if (!Array.isArray(result)) {
+    multisigs = []; // Initialize as an empty array if not already an array
+  }
 
-    console.log('No existing multisig found. Proceeding to add.');
+  console.log('Retrieved multisigs:', multisigs);
 
+  // Check for existing multisig
+  const existing = multisigs.some(
+    (ms) =>
+      ms.m === m &&
+      ms.pubkeys.length === pubkeys.length &&
+      ms.pubkeys.every((key, index) => key === pubkeys[index])
+  );
+
+  if (existing) {
+    console.log('Multisig already exists:', existing);
+    sendResponse({ success: true, result: existing, payload });
+    return; // Exit early if existing
+  }
+
+  console.log('No existing multisig found. Proceeding to add.');
     // Open the popup (if needed) and process the request
     ensurePopup(13, { m, pubkeys, network }, () => {
       console.log('Popup ready for addMultisig. Sending addMultisigToWallet message.');
@@ -164,7 +177,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       );
     });
   });
-
+});
   return true; // Keep port open for async response
 }
 

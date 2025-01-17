@@ -1,13 +1,13 @@
 import React, { useState, useRef } from 'react';
 import CryptoJS from 'crypto-js';
 import { useDispatch } from 'react-redux';
-import { setSeedPhrase, setStep, setAddress, setEncryptedKey,setSelectedNetwork } from '../store/store';
+import { setSeedPhrase, setStep, setAddress, setEncryptedKey,setNetwork } from '../store/store';
 import { generateAddressFromSeed, encryptPrivateKey } from '../lib/walletUtils';
 
 
 const PasswordPrompt = () => {
   const [password, setPassword] = useState('');
-  const [selectedNetwork, setSelectedNetwork] = useState('mainnet'); // Default network
+  const [selectedNetwork, setNetwork] = useState('mainnet'); // Default network
   const dispatch = useDispatch();
   const passwordRef = useRef('');
 
@@ -69,7 +69,7 @@ const PasswordPrompt = () => {
   };
 
   const handleNetworkChange = (event) => {
-    setSelectedNetwork(event.target.value);
+    setNetwork(event.target.value);
   };
 
   const selectedNetworkInfo = networks.find(

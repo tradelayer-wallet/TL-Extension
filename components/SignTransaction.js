@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setStep, setTxid, setSignRequest, setMessageToSign } from '../store/store';
-import { signTransaction, signMessage, signExistingTxWithAutoPrivKey } from '../lib/walletUtils';
+import { signTransaction, signMessage, signExistingTxWithAutoPrivKey, checkPasswordMatch } from '../lib/walletUtils';
 
 const SignTransaction = () => {
   const decodedTx = useSelector((state) => state.decodedTransaction); // For regular transaction signing
@@ -13,12 +13,28 @@ const SignTransaction = () => {
   let passwordRef = useRef('');
   const dispatch = useDispatch();
 
+ const checkPassword = (password) => {
+      const encryptedSeed = localStorage.getItem('encryptedSeed');
+      if (!encryptedSeed) return false;
+
+      // Attempt to decrypt
+      return checkPasswordMatch(encryptedSeed, password);
+  };
+
+
   const sign = async () => {
     let password = passwordRef.current.value
+     const valid = checkPassword(password)
     if (!password) {
       alert('Please enter a password');
       return;
     }
+    if (!valid){
+      alert('Invalid password')
+      return
+    }
+
+
     
     console.log('request id intact? '+requestId)
     console.log('inside sign '+signRequest+' '+txToSign)
@@ -43,7 +59,6 @@ const SignTransaction = () => {
         dispatch(setStep(7));
       } else if (txToSign) {*/
         // Regular transaction signing flow
-        console.log('password '+JSON.stringify(password))
         const txid = await signTransaction(txToSign, password, network);
         password =null
         dispatch(setTxid(txid));

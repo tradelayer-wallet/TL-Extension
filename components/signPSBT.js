@@ -5,7 +5,7 @@ import { signInputsInPsbt, checkPasswordMatch } from '../lib/walletUtils';
 
 const SignPSBT = () => {
   const psbtPayload = useSelector((state) => state.psbt); // PSBT and redeemKey payload
-  const network = useSelector((state)=> state.network)
+  let network = useSelector((state)=> state.network)
   const sellerFlag = useSelector((state)=> state.signPSBT)
   const requestId = useSelector((state)=> state.id)
   const dispatch = useDispatch();
@@ -18,6 +18,8 @@ const SignPSBT = () => {
       if (!encryptedSeed) return false;
       const expectedAddress = chrome
       // Attempt to decrypt
+      network = useSelector((state)=> state.network)
+      console.log('grabbing network '+network)
       return await checkPasswordMatch(encryptedSeed, password,network,address);
 
       }catch{
@@ -28,7 +30,7 @@ const SignPSBT = () => {
   };
 
   const sign = async () => {
-    const password = passwordRef.current.value;
+    let password = passwordRef.current.value;
     console.log('request id intact? '+requestId)
     const valid = await checkPasswordMatch(password)
     console.log('password valid? '+valid)
@@ -50,6 +52,7 @@ const SignPSBT = () => {
         const signedPSBT = await signInputsInPsbt(psbtPayload.psbtHex, network, password,sellerFlag);
         console.log('Signed PSBT:', signedPSBT);
         passwordRef.current.value =''
+        password=''
         // Dispatch the signed PSBT or transaction ID
 
         dispatch(setTxid(signedPSBT.finalTx || signedPSBT.psbtHex));

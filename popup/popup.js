@@ -111,12 +111,6 @@ const App = () => {
     if (message.method === 'addMultisigToWallet') {
       try {
         const { m, pubkeys, network } = message.payload;
-
-        if (!m || !pubkeys || !Array.isArray(pubkeys)||!network) {
-          sendResponse({ success: false, error: 'Invalid payload for addMultisigAddress' });
-          return;
-        }
-
         const result = addMultisigAddress(m, pubkeys, network); // Execute the function here
         sendResponse({ success: true, result });
       } catch (error) {

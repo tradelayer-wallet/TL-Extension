@@ -32,7 +32,8 @@ const address = useSelector((state) => state.address);
 
   const sign = async () => {
     let password = passwordRef.current.value
-     const valid = checkPassword(password)
+     const valid = await checkPasswordMatch(password)
+     console.log('valid '+valid)
     if (!password) {
       alert('Please enter a password');
       return;

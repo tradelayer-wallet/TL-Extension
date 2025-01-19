@@ -88,11 +88,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
    case 'requestAccounts': {
       console.log('Fetching wallet address and pubkey...');
-      chrome.storage.local.get(['address', 'pubkey'], (result) => {
-        const { address, pubkey } = result;
-
-        if (address) {
-          console.log('Address and pubkey retrieved:', { address, pubkey });
+      chrome.storage.local.get(['addresses'], (result) => {
+         const addresses = result.addresses || []; // Retrieve the addresses array or initialize as an empty array
+        if (addresses.length>0) {
+          const { address, pubkey } = addresses[0]; // Destructure the first object in the array
+            console.log(`Address: ${address}, PubKey: ${pubkey}`);
 
           // Return both address and pubkey as an array of objects
           sendResponse({
@@ -119,10 +119,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
       const { m, pubkeys, network } = payload.params;
 
-      // Validation Check
-      if (!m || !pubkeys || !Array.isArray(pubkeys)) {
-        console.error('Invalid payload for addMultisig:', payload);
-        sendResponse({ success: false, error: 'Invalid payload for addMultisig', payload });
+      console.log('m:', m, typeof m);
+      console.log('pubkeys:', pubkeys, Array.isArray(pubkeys), typeof pubkeys);
+      console.log('network:', network);
+
+      if (!m || typeof m !== 'number' || m <= 0) {
+        console.error('Invalid "m":', m);
+        sendResponse({ success: false, error: 'Invalid "m" value', payload });
+        return true; // Exit early
+      }
+
+      if (!pubkeys || !Array.isArray(pubkeys)) {
+        console.error('Invalid "pubkeys":', pubkeys);
+        sendResponse({ success: false, error: 'Invalid "pubkeys" value', payload });
         return true; // Exit early
       }
 
@@ -150,7 +159,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // Open the popup (if needed) and process the request
         ensurePopup(14, { m, pubkeys, network }, () => {
-          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message.');
+          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message. '+m+' '+typeof(m)+' '+pubkeys);
 
           chrome.runtime.sendMessage(
             {

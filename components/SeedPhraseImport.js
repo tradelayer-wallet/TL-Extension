@@ -15,8 +15,10 @@ const ImportSeedPhrase = () => {
 
   const handleImport = () => {
     if (seedWords.every(word => word !== '')) {
-      const seedPhrase = seedWords.join(' ');
+      let seedPhrase = seedWords.join(' ');
+      setSeedWords('')
       dispatch(setSeedPhrase(seedPhrase));
+      seedPhrase = ''
       dispatch(setStep(4)); // Proceed to the password setup step
     } else {
       alert('Please fill in all the words.');

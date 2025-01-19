@@ -5,8 +5,8 @@ import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you hav
 import { setStep } from '../store/store';
 
 const PasswordSetup = () => {
-  const [password, setPasswordValue] = useState('');
-  const [confirmationPassword, setConfirmationPasswordValue] = useState('');
+  let [password, setPasswordValue] = useState('');
+  let [confirmationPassword, setConfirmationPasswordValue] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const dispatch = useDispatch();
   const seedPhrase = useSelector((state) => state.seedPhrase); // Get the seed phrase from Redux
@@ -14,6 +14,8 @@ const PasswordSetup = () => {
   const handlePasswordSubmit = () => {
     // Check if passwords match
     if (password !== confirmationPassword) {
+      password = ''
+      confirmationPassword =''
       setPasswordError('Passwords do not match. Please try again.');
       return;
     }

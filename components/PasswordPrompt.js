@@ -34,7 +34,14 @@ const PasswordPrompt = () => {
       dispatch(setPubKey(addressData.publicKey));
       const encryptedKey = CryptoJS.AES.encrypt(addressData.privateKey.toString(), password);
       localStorage.setItem('encryptedKey', encryptedKey);
-      dispatch(setStep(7)); // Proceed to the next step
+      chrome.storage.local.set({ address: generatedAddress, pubkey: generatedPubkey }, () => {
+        if (chrome.runtime.lastError) {
+          console.error('Error saving address and pubkey:', chrome.runtime.lastError);
+        } else {
+          dispatch(setStep(7));
+          console.log('Address and pubkey saved successfully.');
+        }
+       // Proceed to the next step
     } else {
       alert('Incorrect password');
     }

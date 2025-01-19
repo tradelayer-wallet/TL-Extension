@@ -141,6 +141,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         if (existing) {
           console.log('Multisig already exists:', existing);
+          payload.multisigs = multisigs
           sendResponse({ success: true, result: existing, payload });
           return; // Exit early if existing
         }

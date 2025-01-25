@@ -9,7 +9,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://*.layerwallet.com/*"],
       "js": ["contentScript.js"],
       "run_at": "document_start"
     }
@@ -18,20 +18,27 @@
     "storage",
     "tabs",
     "activeTab",
-    "webRequest",
+    "declarativeNetRequest",
     "scripting"
   ],
-  "host_permissions": [
-    "http://*/*",
-    "https://*/*"
-  ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_layerwallet",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "web_accessible_resources": [
     {
       "resources": ["window.js", "node_modules/events/events.js",
         "node_modules/eth-rpc-errors/dist/error.js",
         "node_modules/eth-rpc-errors/dist/index.js",
         "readyPromise.js"],
-      "matches": ["<all_urls>"]
+      "matches": [
+    "https://api.layerwallet.com/*",
+    "https://testnet-api.layerwallet.com/*"]
     }
   ],
   "content_security_policy": {

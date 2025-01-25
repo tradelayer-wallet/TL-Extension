@@ -87,10 +87,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (method) {
 
    case 'requestAccounts': {
+      const {network }= payload.params
       console.log('Fetching wallet address and pubkey...');
       chrome.storage.local.get(['addresses'], (result) => {
-         const addresses = result.addresses || []; // Retrieve the addresses array or initialize as an empty array
+        console.log('result '+JSON.stringify(result))
+        const filteredAddresses = result.addresses.filter(({ address }) => {
+          if (network === 'LTCTEST') {
+            return address.startsWith('tltc');
+          } else if (network === 'LTC'||!network) {
+            return address.startsWith('ltc');
+          }
+        })
+         const addresses = filteredAddresses || []; // Retrieve the addresses array or initialize as an empty array
         if (addresses.length>0) {
+
           const { address, pubkey } = addresses[0]; // Destructure the first object in the array
             console.log(`Address: ${address}, PubKey: ${pubkey}`);
 
@@ -117,11 +127,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       case 'addMultisig': {
       console.log('Handling addMultisig with payload:', payload);
 
-      const { m, pubkeys, network } = payload.params;
+      let { m, pubkeys, network } = payload.params;
 
       console.log('m:', m, typeof m);
       console.log('pubkeys:', pubkeys, Array.isArray(pubkeys), typeof pubkeys);
       console.log('network:', network);
+      if(network!="LTCTEST"){network="LTC"}
 
       if (!m || typeof m !== 'number' || m <= 0) {
         console.error('Invalid "m":', m);
@@ -139,13 +150,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       chrome.storage.local.get(['multisigs'], (result) => {
         let multisigs = result.multisigs || [];
         console.log('Retrieved multisigs:', multisigs);
+        let prefix = "ltc"
+        if(network=="TLTC"){prefix ="tltc"}
 
         // Check for existing multisig
         const existing = multisigs.find(
-          (ms) =>
-            ms.m === m &&
-            ms.pubkeys.length === pubkeys.length &&
-            ms.pubkeys.every((key, index) => key === pubkeys[index])
+        (ms) =>
+              ms.m === m &&
+              ms.pubkeys.length === pubkeys.length &&
+              ms.pubkeys.every((key, index) => key === pubkeys[index]) &&
+              ms.address.startsWith(prefix) // Ensure address matches the expected prefix
         );
 
         if (existing) {
@@ -159,7 +173,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         // Open the popup (if needed) and process the request
         ensurePopup(14, { m, pubkeys, network }, () => {
-          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message. '+m+' '+typeof(m)+' '+pubkeys);
+          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message. '+m+' '+typeof(m)+' '+pubkeys+''+network);
 
           chrome.runtime.sendMessage(
             {
@@ -176,7 +190,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 // Save the updated multisigs list back to chrome.storage.local
                 chrome.storage.local.set({ multisigs }, () => {
                   console.log('Updated multisigs saved.');
-                  closePopup();
+                  //closePopup();
                   sendResponse({ success: true, result: response.result, payload });
                 });
               } else {

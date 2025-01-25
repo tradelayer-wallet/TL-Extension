@@ -27,11 +27,7 @@ const PasswordPrompt = () => {
     }
 
     try {
-      const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
-      const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-
-  if (serializedSeed && serializedSeed.trim().length > 0) {
-    let addressData = generateAddressFromSeed(serializedSeed, selectedNetwork,password);
+    let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 
   chrome.storage.local.get(['addresses'], (result) => {
     let addresses = result.addresses || []; // Retrieve existing addresses array or initialize as empty
@@ -67,9 +63,6 @@ const PasswordPrompt = () => {
           dispatch(setStep(7));
           console.log('Address and pubkey saved to Redux and moving to step 7.');
         });
-      } else {
-        alert('Incorrect password or corrupted seed data.');
-      }
     } catch (error) {
       console.error('Error decrypting seed phrase:', error);
       alert('Incorrect password or corrupted data');

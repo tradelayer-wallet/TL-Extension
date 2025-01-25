@@ -3,7 +3,12 @@ import { useSelector } from 'react-redux';
 
 const ShowTx = () => {
   const txid = useSelector((state) => state.txid); // Assuming you store the txid in Redux
-
+  
+  const network = useSelector((state) => state.network);
+  let baseurl = 'https://www.sochain.com/tx/LTC/'
+  if(network == 'litecoin-testnet')
+  {baseurl ='https://www.sochain.com/tx/LTCTEST/' }
+  let url = baseurl + txid
   return (
     <div>
       <h2>Transaction Sent Successfully!</h2>
@@ -12,11 +17,11 @@ const ShowTx = () => {
       <p>
         You can view the transaction details on{' '}
         <a
-          href={`https://www.blockcypher.com/btc/tx/${txid}`}
+          href={url}
           target="_blank"
           rel="noopener noreferrer"
         >
-          BlockCypher
+          Sochain
         </a>
       </p>
     </div>

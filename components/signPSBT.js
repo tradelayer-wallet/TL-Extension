@@ -30,7 +30,10 @@ const SignPSBT = () => {
   };
 
   const sign = async () => {
+
+
     let password = passwordRef.current.value;
+    passwordRef.current.value= ''
     console.log('request id intact? '+requestId)
     const valid = await checkPasswordMatch(password)
     console.log('password valid? '+valid)

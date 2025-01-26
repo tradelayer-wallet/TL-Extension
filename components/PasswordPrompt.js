@@ -15,6 +15,8 @@ const PasswordPrompt = () => {
   const networks = [
     { id: 'litecoin', name: 'Litecoin', logo: '../images/ltc.png' },
     { id: 'litecoin-testnet', name: 'Litecoin Testnet', logo: '../images/tltc.png' },
+    { id: 'dogecoin', name: 'Dogecoin', logo: '../images/doge.png' },
+    { id: 'dogecoin-testnet', name: 'Dogecoin Testnet', logo: '../images/tdoge.png' },
   ];
 
   const handlePasswordSubmit = () => {

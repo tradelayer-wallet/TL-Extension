@@ -9,7 +9,7 @@ const PasswordPrompt = () => {
   const [needsPassword, setNeedsPassword] = useState(false);
   const dispatch = useDispatch();
   const passwordRef = useRef('');
-  const selectedNetwork = useSelector((state) => state.network);
+  let selectedNetwork = useSelector((state) => state.network);
   const storedAddress = useSelector((state) => state.address);
 
   const networks = [
@@ -27,7 +27,7 @@ const PasswordPrompt = () => {
       alert('Please enter a password');
       return;
     }
-
+    if(!selectedNetwork){selectedNetwork="litecoin"}
     try {
     let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 

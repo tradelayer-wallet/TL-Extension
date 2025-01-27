@@ -88,20 +88,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
    case 'requestAccounts': {
       const {network }= payload.params
-      console.log('Fetching wallet address and pubkey...');
+      console.log('Fetching wallet address and pubkey...'+network);
       chrome.storage.local.get(['addresses'], (result) => {
-        console.log('result '+JSON.stringify(result))
-        const filteredAddresses = result.addresses.filter(({ address }) => {
-          if (network === 'LTCTEST') {
-            return address.startsWith('tltc');
-          } else if (network === 'LTC'||!network) {
-            return address.startsWith('ltc');
-          }
-        })
-         const addresses = filteredAddresses || []; // Retrieve the addresses array or initialize as an empty array
-        if (addresses.length>0) {
+        console.log('result ' + JSON.stringify(result));
 
-          const { address, pubkey } = addresses[0]; // Destructure the first object in the array
+        const filteredAddresses = [];
+        const addresses = result.addresses || []; // Fallback in case addresses is undefined
+
+        for (let i = 0; i < addresses.length; i++) {
+          const item = addresses[i];
+          if (item.address) {
+            if (network === 'LTCTEST' && item.address.startsWith('tltc')) {
+              filteredAddresses.push(item);
+            } else if ((network === 'LTC' || !network) && item.address.startsWith('ltc')) {
+              filteredAddresses.push(item);
+            }
+          }
+        }
+
+        console.log('Filtered Addresses:', filteredAddresses);
+
+        console.log('addresses '+addresses)
+        if (filteredAddresses.length>0) {
+
+          const { address, pubkey } = filteredAddresses[0]; // Destructure the first object in the array
             console.log(`Address: ${address}, PubKey: ${pubkey}`);
 
           // Return both address and pubkey as an array of objects

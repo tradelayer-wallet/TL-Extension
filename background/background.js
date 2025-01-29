@@ -1,6 +1,5 @@
 
 //"https://frontend.test.sidepit.com/trade"
-let popupWindowId = null; // Store popup window ID globally
 const pendingRequests = {};
 const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnMPfXMRS7Rk";
 const IPINFO_TOKEN = "5992daa04f9275";

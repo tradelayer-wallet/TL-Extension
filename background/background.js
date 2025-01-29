@@ -7,25 +7,40 @@ const IPINFO_TOKEN = "5992daa04f9275";
 const VPNAPI_KEY = "5b2a56ec9bdd4db1bc4ba4e6190d51b2"
 
 
-function openPopup(step=13,  payload = null) {
-  const params = new URLSearchParams();
-  params.append('step', step);
-  params.append('message', payload); // No need to encode manually here
+let popupWindowId = null;
 
-  const popupUrl = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
-  chrome.windows.create(
-    {
-      url: popupUrl, // Path to the popup.html file
-      type: 'popup',
-      width: 400,
-      height: 600,
-    },
-    (window) => {
-      console.log('Popup window opened:', window);
-       popupWindowId = window.id;
+function openPopup(step = 13, payload = null) {
+  chrome.windows.getAll({ populate: true }, (windows) => {
+    const existingPopup = windows.find(
+      (win) => win.id === popupWindowId && win.type === 'popup'
+    );
+
+    if (existingPopup) {
+      console.warn('Popup is already open:', popupWindowId);
+      return;
     }
-  );
+
+    // No existing popup; open a new one
+    const params = new URLSearchParams();
+    params.append('step', step);
+    params.append('message', payload);
+
+    const popupUrl = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
+    chrome.windows.create(
+      {
+        url: popupUrl,
+        type: 'popup',
+        width: 400,
+        height: 600,
+      },
+      (window) => {
+        console.log('Popup window opened:', window);
+        popupWindowId = window.id; // Save the window ID
+      }
+    );
+  });
 }
+
 
 
 function closePopup() {

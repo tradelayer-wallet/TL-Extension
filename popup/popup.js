@@ -144,14 +144,16 @@ const App = () => {
 
 
     if (message.method === 'signPsbtRequest') {
-        const { txToSign, network, sellerFlag } = message.payload;
-        console.log('psbt hex in popup '+sellerFlag +' '+txToSign+' '+message.payload.requestId)
-        // Store the PSBT data and set the signing step
-        dispatch(setPSBTToSign( txToSign ));
-        dispatch(setNetwork(network))
-        dispatch(setPSBTRequest(sellerFlag))
-        dispatch(setRequestId(message.payload.requestId))
-        dispatch(setStep(16)); // Go to the PSBT signing page
+        const { txToSign, network, sellerFlag, redeemScript } = message.payload;  // ← ADDED redeemScript
+        console.log('psbt hex in popup', sellerFlag, txToSign, message.payload.requestId);
+        console.log('redeemScript in popup:', redeemScript);  // ← Debug log
+        
+        // Store the PSBT data and redeemScript
+        dispatch(setPSBTToSign(txToSign, redeemScript));  // ← PASS redeemScript
+        dispatch(setNetwork(network));
+        dispatch(setPSBTRequest(sellerFlag));
+        dispatch(setRequestId(message.payload.requestId));
+        dispatch(setStep(16));
         sendResponse({ success: true });
     }
   });

@@ -64,9 +64,9 @@ export const setSignRequest = (flag) => ({type: 'SET_SIGNREQUEST', payload: flag
 export const setPSBTRequest = (flag) => ({type: 'SET_PSBTREQUEST', payload: flag})
 export const setConfirmationPasswordValue = (password) =>({type: 'SET_CONFIRMATIONPASSWORD', payload:password})
 export const setPubKey = (pubKey) =>({type: 'SET_PUBKEY', payload:pubKey})
-export const setPSBTToSign = (psbtHex, redeemKey) => ({
+export const setPSBTToSign = (psbtHex, redeemScript) => ({
   type: 'SET_PSBT',
-  payload: { psbtHex},
+  payload: { psbtHex, redeemScript },  
 });
 export const setRequestId = (id) => (
 {

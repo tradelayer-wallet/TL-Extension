@@ -3,55 +3,79 @@
 // Inject window.js into the webpage
 const script = document.createElement('script');
 script.src = chrome.runtime.getURL('./window.js');
-script.type = 'module'; // Make sure this matches the structure of your window.js
+script.type = 'module';
 script.onload = function () {
-  this.remove(); // Clean up after injection
+  this.remove();
 };
 (document.head || document.documentElement).appendChild(script);
 
-// Forward messages from the webpage to the background script
+// ============================================================================
+// PAGE -> BACKGROUND
+// ============================================================================
+
 window.addEventListener('message', (event) => {
   if (event.source !== window) return;
 
   const { type, data } = event.data;
-  const method = data.method;
-  console.log('inside content script', type, method);
+  if (type !== 'request') return;
 
-  if (type === 'request') {
-    try {
-      chrome.runtime.sendMessage({ method, payload: data }, (response) => {
-        if (chrome.runtime.lastError) {
-          console.error('Error sending message to background:', chrome.runtime.lastError.message);
-          window.postMessage({ type: 'response', data: { success: false, error: chrome.runtime.lastError.message } }, '*');
-        } else {
-          console.log('Response from background:', response);
-          window.postMessage({ type: 'response', data: response }, '*');
-        }
-      });
-    } catch (error) {
-      console.error('Error handling message:', error.message);
-      window.postMessage({ type: 'response', data: { success: false, error: error.message } }, '*');
-    }
+  const { method, id } = data;
+  console.log('inside content script', type, method, id);
+
+  try {
+    chrome.runtime.sendMessage({ method, payload: data }, (response) => {
+      if (chrome.runtime.lastError) {
+        const error = chrome.runtime.lastError.message;
+        console.error('Error sending message to background:', error);
+
+        window.postMessage(
+          { type: 'response', data: { id, success: false, error } },
+          '*'
+        );
+        return;
+      }
+
+      // Always include request id so page can resolve the promise
+      window.postMessage(
+        {
+          type: 'response',
+          data: { id, ...(response || {}) }
+        },
+        '*'
+      );
+    });
+  } catch (error) {
+    console.error('Error handling message:', error.message);
+
+    window.postMessage(
+      { type: 'response', data: { id, success: false, error: error.message } },
+      '*'
+    );
   }
 });
 
+// ============================================================================
+// BACKGROUND -> PAGE
+// ============================================================================
 
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((message) => {
-  const { type, data } = message;
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  const { type, data, payload } = message;
+
   if (type === 'accountsChanged' || type === 'networkChanged') {
     window.postMessage({ type, data }, '*');
+    sendResponse({ success: true });
+    return;
   }
 
   if (type === 'signResult') {
-    console.log('Received sign result from background:', payload.signedMessage);
+    console.log('Received sign result from background');
 
-    // Relay the result to the web page
     window.postMessage(
-      { type: 'signedMessage', data: payload.signedMessage },
+      { type: 'signedMessage', data: payload?.signedMessage || data },
       '*'
     );
 
     sendResponse({ success: true });
+    return;
   }
 });

@@ -70,7 +70,10 @@ class MyWalletProvider extends EventEmitter {
       console.log('in listener in window.js ' + type + ' ' + JSON.stringify(data));
 
       if (type === 'response') {
-          const { id, result, error } = data.payload;
+          // The content script posts `{ type:'response', data: { id, ...response } }`.
+          // Older code sometimes nested fields under `data.payload`, so support both shapes.
+          const wire = (data && data.id !== undefined) ? data : (data && data.payload) ? data.payload : {};
+          const { id, result, error } = wire;
           console.log('window handle response ' + result + ' ' + id);
           const { resolve, reject } = this.pendingRequests.get(id) || {};
           if (resolve) {

@@ -49,7 +49,7 @@ const Send = () => {
     }
 
     try {
-      const baseurl = network === 'litecoin-testnet' || network === 'LTCTEST'
+      const baseurl = network === 'LTCTEST'
         ? 'https://testnet-api.layerwallet.com/'
         : 'https://api.layerwallet.com/';
       const utxoUrl = `${baseurl}address/utxo/${fromAddress}`;
@@ -91,7 +91,7 @@ const Send = () => {
 
   return (
     <div>
-      <h2>Send BTC</h2>
+      <h2>Send LTC</h2>
 
       <div>
         <label htmlFor="address">Address</label>

@@ -13,10 +13,10 @@ const PasswordPrompt = () => {
   const storedAddress = useSelector((state) => state.address);
 
   const networks = [
-    { id: 'litecoin', name: 'Litecoin', logo: '../images/ltc.png' },
-    { id: 'litecoin-testnet', name: 'Litecoin Testnet', logo: '../images/tltc.png' },
-    { id: 'dogecoin', name: 'Dogecoin', logo: '../images/doge.png' },
-    { id: 'dogecoin-testnet', name: 'Dogecoin Testnet', logo: '../images/tdoge.png' },
+    { id: 'LTC', name: 'Litecoin', logo: '../images/ltc.png' },
+    { id: 'LTCTEST', name: 'Litecoin Testnet', logo: '../images/tltc.png' },
+    { id: 'DOGE', name: 'Dogecoin', logo: '../images/doge.png' },
+    { id: 'DOGETEST', name: 'Dogecoin Testnet', logo: '../images/tdoge.png' },
   ];
 
   const handlePasswordSubmit = () => {
@@ -27,7 +27,7 @@ const PasswordPrompt = () => {
       alert('Please enter a password');
       return;
     }
-    if(!selectedNetwork){selectedNetwork="litecoin"}
+    if(!selectedNetwork){selectedNetwork="LTC"}
     try {
     let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 

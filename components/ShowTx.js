@@ -6,7 +6,7 @@ const ShowTx = () => {
   
   const network = useSelector((state) => state.network);
   let baseurl = 'https://www.sochain.com/tx/LTC/'
-  if(network == 'litecoin-testnet')
+  if(network == 'LTCTEST')
   {baseurl ='https://www.sochain.com/tx/LTCTEST/' }
   let url = baseurl + txid
   return (

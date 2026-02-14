@@ -98,10 +98,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const { method, payload } = message;
 
   console.log('Message received in background script:', method, JSON.stringify(payload));
+
+  const normalizeNetworkId = (net) => {
+    if (!net) return null;
+    const s = String(net).trim().toUpperCase();
+    if (s === 'TLTC' || s === 'TLTCTEST') return 'LTCTEST';
+    if (s === 'LITECOIN-TESTNET' || s === 'LITECOIN_TESTNET') return 'LTCTEST';
+    if (s === 'LITECOIN' || s === 'LTCMAINNET') return 'LTC';
+    if (s === 'LTC' || s === 'LTCTEST') return s;
+    return s;
+  };
+
   switch (method) {
 
    case 'requestAccounts': {
-      const {network }= payload.params
+      const network = normalizeNetworkId(payload?.params?.network);
       console.log('Fetching wallet address and pubkey...'+network);
       chrome.storage.local.get(['addresses'], (result) => {
         console.log('result ' + JSON.stringify(result));
@@ -175,7 +186,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         let multisigs = result.multisigs || [];
         console.log('Retrieved multisigs:', multisigs);
         let prefix = "ltc"
-        if(network=="TLTC"){prefix ="tltc"}
+        if(network=="LTCTEST"){prefix ="tltc"}
 
         // Check for existing multisig
         const existing = multisigs.find(

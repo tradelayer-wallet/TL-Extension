@@ -18,7 +18,7 @@ const Balances = () => {
   useEffect(() => {
     const fetchBalance = () => {
       let url = `https://api.layerwallet.com/address/utxo/${address}`;
-      if (network === 'litecoin-testnet') {
+      if (network === 'LTCTEST') {
         url = `https://testnet-api.layerwallet.com/address/utxo/${address}`;
       }
 

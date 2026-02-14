@@ -9,6 +9,9 @@ const initialState = {
   password: '',
   wallet: null,
   encryptedSeed: null,
+  // Canonical chain id used across the extension and by dapps (TL-Web) calling into it.
+  // Supported: 'LTC', 'LTCTEST' (Phantom handles BTC externally).
+  network: 'LTC',
   passwordStep: false,  // This will control the password prompt step
   seedGenerationStep: false, // This will control the seed generation flow
   confirmationWord: '',

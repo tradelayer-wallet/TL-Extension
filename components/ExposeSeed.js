@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep } from '../store/store'; // Import the setStep action
 import CryptoJS from 'crypto-js'; // Import CryptoJS for decryption
@@ -9,6 +9,11 @@ const ExposeSeed = () => {
   const passwordRef = useRef(''); // Reference for password input
 
   const seedPhrase = useSelector((state) => state.seedPhrase); // Get seed phrase from Redux
+
+  useEffect(() => () => {
+    setDecryptedSeedPhrase('');
+    if (passwordRef.current) passwordRef.current.value = '';
+  }, []);
 
   const handlePasswordSubmit = () => {
     const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
@@ -32,6 +37,8 @@ const ExposeSeed = () => {
   };
 
   const handleNext = () => {
+    setDecryptedSeedPhrase('');
+    if (passwordRef.current) passwordRef.current.value = '';
     dispatch(setStep(11)); // Move to step 11 for seed phrase confirmation (or next step)
   };
 

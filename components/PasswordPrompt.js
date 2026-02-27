@@ -1,16 +1,12 @@
-import React, { useState, useRef, useEffect } from 'react';
-import CryptoJS from 'crypto-js';
+import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
-import { generateAddressFromSeed } from '../lib/walletUtils';
+import { generateAddressFromSeed, clearPrivateKeyCaches } from '../lib/walletUtils';
 
 const PasswordPrompt = () => {
-  const [password, setPassword] = useState('');
-  const [needsPassword, setNeedsPassword] = useState(false);
   const dispatch = useDispatch();
   const passwordRef = useRef('');
   let selectedNetwork = useSelector((state) => state.network);
-  const storedAddress = useSelector((state) => state.address);
 
   const networks = [
     { id: 'LTC', name: 'Litecoin', logo: '../images/ltc.png' },
@@ -58,6 +54,7 @@ const PasswordPrompt = () => {
         dispatch(setPubKey(addressData.publicKey));
         password=''
         // Encrypt and store the private key in local storage for later use
+        clearPrivateKeyCaches();
         const encryptedKey = addressData.privateKey
         localStorage.setItem('encryptedKey', encryptedKey);
         addressData = null

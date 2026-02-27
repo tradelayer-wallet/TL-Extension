@@ -3,6 +3,7 @@ import CryptoJS from 'crypto-js';
 import { useDispatch, useSelector } from 'react-redux';
 import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you have an action to set the password
 import { setStep } from '../store/store';
+import { clearPrivateKeyCaches } from '../lib/walletUtils';
 
 const PasswordSetup = () => {
   let [password, setPasswordValue] = useState('');
@@ -32,14 +33,15 @@ const PasswordSetup = () => {
       // Encrypt the seedPhrase and store it in localStorage
       encryptedSeed = CryptoJS.AES.encrypt(seedPhrase, password).toString();
       localStorage.setItem('encryptedSeed', encryptedSeed);  // Store the encrypted seed in localStorage
+      clearPrivateKeyCaches();
     }
 
     // Decrypt the seed phrase using the entered password
     const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
     setPasswordValue('')
     const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    setSeedPhrase(''); 
     if (serializedSeed) {
+      dispatch(setSeedPhrase(null));
       dispatch(setStep(6)); // Proceed to Step 6 (Password prompt) after successful decryption
     } else {
       alert('Incorrect password. Please try again.');

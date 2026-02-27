@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
 import CryptoJS from 'crypto-js'; // Import CryptoJS for decryption and encryption
+import { clearPrivateKeyCaches } from '../lib/walletUtils';
 
 const ResetPassword = () => {
   const dispatch = useDispatch();
@@ -44,6 +45,7 @@ const ResetPassword = () => {
 
     // Save the new encrypted seed to localStorage
     localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);
+    clearPrivateKeyCaches();
 
     // Clear password refs
     currentPasswordRef.current.value = '';

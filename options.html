@@ -20,6 +20,7 @@
     <input type="checkbox" id="someSetting" name="someSetting">
     <br><br>
     <button id="saveButton">Save Settings</button>
+    <button id="openDebugButton">Open Wallet Debug</button>
 
     <script>
         // Load saved settings (if any)
@@ -33,6 +34,14 @@
             const someSetting = document.getElementById('someSetting').checked;
             localStorage.setItem('someSetting', someSetting);
             alert('Settings saved!');
+        });
+
+        document.getElementById('openDebugButton').addEventListener('click', function() {
+            if (chrome?.runtime?.getURL) {
+                window.open(chrome.runtime.getURL('testPage.html'), '_blank');
+                return;
+            }
+            alert('Open testPage.html as an extension page.');
         });
     </script>
 </body>

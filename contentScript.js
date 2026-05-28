@@ -1,81 +1,118 @@
-// contentScript.js
+const CHANNEL = 'tradelayer-provider';
+const ALLOWED_METHODS = new Set([
+  'connect',
+  'requestAccounts',
+  'signMessage',
+  'signPsbt',
+  'signPSBT',
+  'signTransaction',
+  'addMultisig',
+  'keepAlive',
+]);
+const DEBUG = !!globalThis.__TRADELAYER_DEBUG__;
 
-// Inject window.js into the webpage
-const script = document.createElement('script');
-script.src = chrome.runtime.getURL('./window.js');
-script.type = 'module';
-script.onload = function () {
+const debugLog = (...args) => {
+  if (DEBUG) {
+    console.log('[tl-content]', ...args);
+  }
+};
+
+const sessionId = crypto.randomUUID();
+const targetOrigin = window.location.origin;
+
+const injectedScript = document.createElement('script');
+injectedScript.src = chrome.runtime.getURL('window.js');
+injectedScript.type = 'module';
+injectedScript.dataset.tradelayerSessionId = sessionId;
+injectedScript.dataset.tradelayerOrigin = targetOrigin;
+injectedScript.onload = function onLoad() {
   this.remove();
 };
-(document.head || document.documentElement).appendChild(script);
+(document.head || document.documentElement).appendChild(injectedScript);
 
-// ============================================================================
-// PAGE -> BACKGROUND
-// ============================================================================
+const postToPage = (type, data) => {
+  window.postMessage(
+    {
+      channel: CHANNEL,
+      sessionId,
+      type,
+      data,
+    },
+    targetOrigin
+  );
+};
+
+const normalizeMethod = (method) => {
+  if (method === 'signPSBT') return 'signPsbt';
+  return method;
+};
 
 window.addEventListener('message', (event) => {
-  if (event.source !== window) return;
+  if (event.source !== window || event.origin !== targetOrigin) {
+    return;
+  }
 
-  const { type, data } = event.data;
-  if (type !== 'request') return;
+  const message = event.data;
+  if (
+    !message ||
+    message.channel !== CHANNEL ||
+    message.sessionId !== sessionId ||
+    message.type !== 'request'
+  ) {
+    return;
+  }
 
-  const { method, id } = data;
-  console.log('inside content script', type, method, id);
+  const { id, method, params } = message.data || {};
+  const normalizedMethod = normalizeMethod(method);
+  debugLog('request <- page', message.data);
+  if (typeof id !== 'string' || !ALLOWED_METHODS.has(method)) {
+    debugLog('rejecting request', { id, method });
+    postToPage('response', {
+      id,
+      success: false,
+      error: 'Invalid TradeLayer provider request.',
+    });
+    return;
+  }
 
-  try {
-    chrome.runtime.sendMessage({ method, payload: data }, (response) => {
+  chrome.runtime.sendMessage(
+    {
+      channel: CHANNEL,
+      type: 'providerRequest',
+      data: { id, method: normalizedMethod, params: params || {} },
+    },
+    (response) => {
       if (chrome.runtime.lastError) {
-        const error = chrome.runtime.lastError.message;
-        console.error('Error sending message to background:', error);
-
-        window.postMessage(
-          { type: 'response', data: { id, success: false, error } },
-          '*'
-        );
+        debugLog('runtime error', chrome.runtime.lastError.message);
+        postToPage('response', {
+          id,
+          success: false,
+          error: chrome.runtime.lastError.message,
+        });
         return;
       }
 
-      // Always include request id so page can resolve the promise
-      window.postMessage(
-        {
-          type: 'response',
-          data: { id, ...(response || {}) }
-        },
-        '*'
-      );
-    });
-  } catch (error) {
-    console.error('Error handling message:', error.message);
-
-    window.postMessage(
-      { type: 'response', data: { id, success: false, error: error.message } },
-      '*'
-    );
-  }
+      debugLog('runtime response', response);
+      postToPage('response', {
+        id,
+        success: !!response?.success,
+        result: response?.result,
+        error: response?.error,
+      });
+    }
+  );
 });
 
-// ============================================================================
-// BACKGROUND -> PAGE
-// ============================================================================
-
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const { type, data, payload } = message;
-
-  if (type === 'accountsChanged' || type === 'networkChanged') {
-    window.postMessage({ type, data }, '*');
-    sendResponse({ success: true });
-    return;
+  if (message?.channel !== CHANNEL || message?.type !== 'providerEvent') {
+    return false;
   }
 
-  if (type === 'signResult') {
-    console.log('Received sign result from background');
+  postToPage('event', {
+    event: message.event,
+    payload: message.payload,
+  });
 
-    window.postMessage(
-      { type: 'signedMessage', data: payload?.signedMessage || data },
-      '*'
-    );
-
-    sendResponse({ success: true });
-    return;
-  }
+  sendResponse({ success: true });
+  return true;
 });

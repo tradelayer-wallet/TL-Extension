@@ -1,125 +1,124 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { setStep, setTxid, setSignRequest, setMessageToSign } from '../store/store';
-import { signTransaction, signMessage, signExistingTxWithAutoPrivKey, checkPasswordMatch } from '../lib/walletUtils';
+import React, { useRef } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { setMessageToSign, setSignRequest, setStep, setTxToSign } from '../store/store';
+import { checkPasswordMatch, signMessage, signTransaction } from '../lib/walletUtils';
 
 const SignTransaction = () => {
-  const decodedTx = useSelector((state) => state.decodedTransaction); // For regular transaction signing
-  const signRequest = useSelector((state) => state.signRequest); // Flag for external signing
-  const txToSign = useSelector((state) => state.tx)
-  const requestId = useSelector((state)=> state.id)
-  const network = useSelector((state)=> state.network)
-  const messageToSign = localStorage.getItem('messageToSign'); // Message passed for signing
-  let passwordRef = useRef('');
   const dispatch = useDispatch();
-const address = useSelector((state) => state.address);
+  const passwordRef = useRef('');
+  const address = useSelector((state) => state.address);
+  const messageToSign = useSelector((state) => state.message);
+  const network = useSelector((state) => state.network);
+  const requestId = useSelector((state) => state.id);
+  const requestOrigin = useSelector((state) => state.requestOrigin);
+  const txToSign = useSelector((state) => state.tx);
 
- const checkPassword = async (password) => {
-      try{
-      const encryptedSeed = localStorage.getItem('encryptedSeed');
-      if (!encryptedSeed) return false;
-      const expectedAddress = chrome
-      // Attempt to decrypt
-      return await checkPasswordMatch(encryptedSeed, password,network,address);
-
-      }catch{
-        console.log('err in checkPassword implies bad password')
-        return false
-      }
-      
+  const checkPassword = async (password) => {
+    try {
+      return await checkPasswordMatch(password, network, address);
+    } catch {
+      return false;
+    }
   };
 
+  const reject = async (reason = 'User rejected the signing request.') => {
+    if (requestId) {
+      await chrome.runtime.sendMessage({
+        method: 'rejectPendingRequest',
+        payload: { requestId, reason },
+      });
+    }
+    dispatch(setSignRequest(false));
+    dispatch(setMessageToSign(null));
+    dispatch(setTxToSign(null));
+    dispatch(setStep(7));
+  };
 
   const sign = async () => {
-    let password = passwordRef.current.value
-     const valid = await checkPasswordMatch(password)
-     console.log('valid '+valid)
+    const password = passwordRef.current.value || '';
+    passwordRef.current.value = '';
+
     if (!password) {
       alert('Please enter a password');
       return;
     }
-    if (!valid){
-      alert('Invalid password')
-      return
+
+    const valid = await checkPassword(password);
+    if (!valid) {
+      alert('Invalid password');
+      return;
     }
 
-
-    
-    console.log('request id intact? '+requestId)
-    console.log('inside sign '+signRequest+' '+txToSign)
-    passwordRef.current.value=null
-    //try {
-      /*if (signRequest && messageToSign) {
-        console.log('messageToSign '+messageToSign+' '+passwordRef)
-        // Signing an externally requested message
-
-        const signedMessage = await signMessage(messageToSign, passwordRef.current.value);
-        passwordRef.current.value=null
-        console.log('signed message '+signedMessage)
-        // Dispatch the result back to the listener
-        chrome.runtime.sendMessage({
-          method: 'signResponse',
-          payload: { signedMessage },
-        });
-
-        // Clear the sign request and return to the previous step
-        dispatch(setSignRequest(false));
-        localStorage.setItem('messageToSign', null); 
-        dispatch(setStep(7));
-      } else if (txToSign) {*/
-        // Regular transaction signing flow
-        const txid = await signTransaction(txToSign, password, network);
-        password =null
-        dispatch(setTxid(txid));
-        chrome.runtime.sendMessage({
-          method: 'signTxResponse',
+    try {
+      if (messageToSign) {
+        const signedMessage = await signMessage(messageToSign, password);
+        await chrome.runtime.sendMessage({
+          method: 'signMessageResponse',
           payload: {
-            requestId,   // Ensure requestId is defined in your scope
-            signedTx: txid, // Replace with the actual transaction hex or relevant variable
+            requestId,
+            signedMessage,
           },
         });
+      } else if (txToSign) {
+        const signedTx = await signTransaction(txToSign, password, network);
+        await chrome.runtime.sendMessage({
+          method: 'signTxResponse',
+          payload: {
+            requestId,
+            signedTx,
+          },
+        });
+      }
 
-        // Go to the ShowTx page
-        dispatch(setStep(14));
-      //}
-    /*} catch (error) {
-      console.error('Error signing:', error);
-      alert('There was an error signing the transaction or message.');
-    }*/
-  };
-
-  const cancel = () => {
-    // Clear the signing state and return to the previous step
-    dispatch(setSignRequest(false));
-    dispatch(setMessageToSign(null));
-    dispatch(setStep(7)); // Return to the balances page or other desired step
+      dispatch(setSignRequest(false));
+      dispatch(setMessageToSign(null));
+      dispatch(setTxToSign(null));
+      dispatch(setStep(14));
+    } catch (error) {
+      console.error('Error signing request:', error);
+      alert('There was an error signing the request.');
+    }
   };
 
   return (
-  <div>
-    <h2>Sign {signRequest ? 'Message' : 'Transaction'}</h2>
-
-    {signRequest && txToSign && (
-      <div>
-        <h3>Message to Sign</h3>
-        <pre className="tx-box">{JSON.stringify(txToSign, null, 2)}</pre>
-      </div>
-    )}
-
     <div>
-      <label htmlFor="password">Enter Password to Sign:</label>
-      <input
-        type="password"
-        id="password"
-        ref={passwordRef}
-        placeholder="Enter password"
-      />
-    </div>
+      <h2>{messageToSign ? 'Sign Message' : 'Review Legacy Transaction'}</h2>
 
-    <button onClick={sign}>Sign {signRequest ? 'Message' : 'Transaction'}</button>
-    <button onClick={cancel}>Cancel</button>
-  </div>
-);
-}
+      {requestOrigin && <p><strong>Origin:</strong> {requestOrigin}</p>}
+      {network && <p><strong>Network:</strong> {network}</p>}
+
+      {messageToSign && (
+        <div>
+          <h3>Message</h3>
+          <pre className="tx-box" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {messageToSign}
+          </pre>
+        </div>
+      )}
+
+      {!messageToSign && txToSign && (
+        <div>
+          <h3>Transaction Payload</h3>
+          <pre className="tx-box" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+            {JSON.stringify(txToSign, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      <div>
+        <label htmlFor="password">Enter Password to Approve:</label>
+        <input
+          type="password"
+          id="password"
+          ref={passwordRef}
+          placeholder="Enter password"
+        />
+      </div>
+
+      <button onClick={sign}>Approve</button>
+      <button onClick={() => reject()}>Reject</button>
+    </div>
+  );
+};
 
 export default SignTransaction;

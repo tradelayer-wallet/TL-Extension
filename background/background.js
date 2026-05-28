@@ -1,542 +1,705 @@
+const CHANNEL = 'tradelayer-provider';
+const SITE_PERMISSIONS_KEY = 'sitePermissionsV1';
+const PAGE_METHODS = new Set([
+  'connect',
+  'requestAccounts',
+  'signMessage',
+  'signPsbt',
+  'signTransaction',
+  'addMultisig',
+  'keepAlive',
+]);
+const DEBUG = !!globalThis.__TRADELAYER_DEBUG__;
 
-//"https://frontend.test.sidepit.com/trade"
-const pendingRequests = {};
-const CRIMINAL_IP_API_KEY = "RKohp7pZw3LsXBtbmU3vcaBByraHPzDGrDnE0w1vI0qTEredJnMPfXMRS7Rk";
-const IPINFO_TOKEN = "5992daa04f9275";
-const VPNAPI_KEY = "5b2a56ec9bdd4db1bc4ba4e6190d51b2"
+const debugLog = (...args) => {
+  if (DEBUG) {
+    console.log('[tl-background]', ...args);
+  }
+};
 
+const normalizeProviderMethod = (method) => {
+  if (method === 'signPSBT') return 'signPsbt';
+  return method;
+};
+
+const pendingRequests = new Map();
 
 let popupWindowId = null;
+let popupRequestId = null;
 
-function openPopup(step = 13, payload = null) {
-  chrome.windows.getAll({ populate: true }, (windows) => {
-    const existingPopup = windows.find(
-      (win) => win.id === popupWindowId && win.type === 'popup'
-    );
+const storageGet = (keys) =>
+  new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 
-    if (existingPopup) {
-      console.warn('Popup is already open:', popupWindowId);
-      return;
-    }
+const storageSet = (items) =>
+  new Promise((resolve) => chrome.storage.local.set(items, resolve));
 
-    // No existing popup; open a new one
-    const params = new URLSearchParams();
-    params.append('step', step);
-    params.append('message', payload);
+const sendRuntimeMessage = (message) =>
+  new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage(message, (response) => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      resolve(response);
+    });
+  });
 
-    const popupUrl = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
+const createPopupWindow = (url) =>
+  new Promise((resolve, reject) => {
     chrome.windows.create(
       {
-        url: popupUrl,
+        url,
         type: 'popup',
-        width: 400,
-        height: 600,
+        width: 420,
+        height: 640,
       },
       (window) => {
-        console.log('Popup window opened:', window);
-        popupWindowId = window.id; // Save the window ID
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        resolve(window);
       }
     );
   });
-}
 
-
-
-function closePopup() {
-  if (popupWindowId) {
-    chrome.windows.remove(popupWindowId, () => {
-      console.log('Popup window closed');
-      popupWindowId = null; // Clear the saved window ID
+const removeWindow = (windowId) =>
+  new Promise((resolve) => {
+    chrome.windows.remove(windowId, () => {
+      void chrome.runtime.lastError;
+      resolve();
     });
-  } else {
-    console.warn('No popup window to close');
-  }
-}
-
-function ensurePopup(step = 14, payload = null, callback) {
-  // Check if the popup is already open
-  chrome.windows.getAll({ populate: true }, (windows) => {
-    const existingPopup = windows.find(
-      (win) => win.id === popupWindowId && win.type === 'popup'
-    );
-
-    if (existingPopup) {
-      // Popup is already open, send the request
-      console.log('Popup already open');
-      callback(); // Continue processing
-      return;
-    }
-
-    // Open a new popup window
-    const params = new URLSearchParams();
-    params.append('step', step);
-    params.append('message', payload);
-
-    const popupUrl = chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
-    chrome.windows.create(
-      {
-        url: popupUrl,
-        type: 'popup',
-        width: 400,
-        height: 600,
-      },
-      (newPopup) => {
-        popupWindowId = newPopup.id; // Save the new popup ID
-        console.log('Popup opened:', newPopup);
-
-        // Wait for the popup to be ready
-        setTimeout(callback, 500); // Delay before calling callback (adjust as needed)
-      }
-    );
   });
-}
 
-let accounts = ['12342134']; // Manage your accounts here
-let network = 'mainnet'; // Manage your network state
+const normalizeNetworkId = (network) => {
+  const value = String(network || 'LTC').trim().toUpperCase();
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  const { method, payload } = message;
+  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
+  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
+  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
+  if (value === 'TESTNET') return 'LTCTEST';
+  if (value === 'LTC' || value === 'LTCTEST') return value;
 
-  console.log('Message received in background script:', method, JSON.stringify(payload));
+  return value;
+};
 
-  const normalizeNetworkId = (net) => {
-    if (!net) return null;
-    const s = String(net).trim().toUpperCase();
-    if (s === 'TLTC' || s === 'TLTCTEST') return 'LTCTEST';
-    if (s === 'LITECOIN-TESTNET' || s === 'LITECOIN_TESTNET') return 'LTCTEST';
-    if (s === 'LITECOIN' || s === 'LTCMAINNET') return 'LTC';
-    if (s === 'LTC' || s === 'LTCTEST') return s;
-    return s;
+const getSenderOrigin = (sender) => {
+  const candidate =
+    sender.origin ||
+    sender.url ||
+    sender.documentUrl ||
+    sender.tab?.url ||
+    null;
+
+  if (!candidate) return null;
+
+  try {
+    return new URL(candidate).origin;
+  } catch {
+    return null;
+  }
+};
+
+const isAllowedOrigin = (origin) => {
+  if (!origin) return false;
+
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    return (
+      url.hostname === 'layerwallet.com' ||
+      url.hostname === 'www.layerwallet.com' ||
+      url.hostname.endsWith('.layerwallet.com')
+    );
+  } catch {
+    return false;
+  }
+};
+
+const getSenderContext = (sender) => {
+  const origin = getSenderOrigin(sender);
+  const tabId = sender.tab?.id;
+
+  if (!origin || tabId == null) return null;
+
+  return {
+    origin,
+    tabId,
+    frameId: sender.frameId ?? 0,
   };
+};
 
-  switch (method) {
+const isPopupSender = (sender) => {
+  const popupUrl = chrome.runtime.getURL('popup/popup.html');
+  return typeof sender.url === 'string' && sender.url.startsWith(popupUrl);
+};
 
-   case 'requestAccounts': {
-      const network = normalizeNetworkId(payload?.params?.network);
-      console.log('Fetching wallet address and pubkey...'+network);
-      chrome.storage.local.get(['addresses'], (result) => {
-        console.log('result ' + JSON.stringify(result));
+const getPopupUrl = (step, requestId) => {
+  const params = new URLSearchParams();
+  params.set('step', String(step));
+  params.set('message', String(requestId));
+  return chrome.runtime.getURL(`popup/popup.html?${params.toString()}`);
+};
 
-        const filteredAddresses = [];
-        const addresses = result.addresses || []; // Fallback in case addresses is undefined
+const respondSuccess = (sendResponse, result) => {
+  sendResponse({ success: true, result });
+};
 
-        for (let i = 0; i < addresses.length; i++) {
-          const item = addresses[i];
-          if (item.address) {
-            if (network === 'LTCTEST' && item.address.startsWith('tltc')) {
-              filteredAddresses.push(item);
-            } else if ((network === 'LTC' || !network) && item.address.startsWith('ltc')) {
-              filteredAddresses.push(item);
-            }
-          }
-        }
+const respondError = (sendResponse, error) => {
+  const message =
+    typeof error === 'string'
+      ? error
+      : error instanceof Error
+        ? error.message
+        : 'Unknown extension error';
 
-        console.log('Filtered Addresses:', filteredAddresses);
+  sendResponse({ success: false, error: message });
+};
 
-        console.log('addresses '+addresses)
-        if (filteredAddresses.length>0) {
-
-          const { address, pubkey } = filteredAddresses[0]; // Destructure the first object in the array
-            console.log(`Address: ${address}, PubKey: ${pubkey}`);
-
-          // Return both address and pubkey as an array of objects
-          sendResponse({
-            success: true,
-            result: [{ address, pubkey }], // Ensure it's in the expected format
-            payload,
-          });
-        } else {
-          console.error('No address found in storage');
-          sendResponse({
-            success: false,
-            error: 'No address available',
-            payload,
-          });
-        }
-      });
-
-      return true; // Keep port open for async response
+const sendProviderEvent = (context, event, payload) => {
+  chrome.tabs.sendMessage(
+    context.tabId,
+    {
+      channel: CHANNEL,
+      type: 'providerEvent',
+      event,
+      payload,
+    },
+    { frameId: context.frameId },
+    () => {
+      void chrome.runtime.lastError;
     }
+  );
+};
 
+const getSitePermissions = async () => {
+  const stored = await storageGet([SITE_PERMISSIONS_KEY]);
+  return stored[SITE_PERMISSIONS_KEY] || {};
+};
 
-      case 'addMultisig': {
-      console.log('Handling addMultisig with payload:', payload);
+const getApprovedNetworks = async (origin) => {
+  const permissions = await getSitePermissions();
+  const networks = permissions[origin];
+  return Array.isArray(networks) ? networks : [];
+};
 
-      let { m, pubkeys, network } = payload.params;
+const inferNetworkFromAddress = (address) => {
+  if (typeof address !== 'string') return null;
+  const value = address.trim().toLowerCase();
 
-      console.log('m:', m, typeof m);
-      console.log('pubkeys:', pubkeys, Array.isArray(pubkeys), typeof pubkeys);
-      console.log('network:', network);
-      if(network!="LTCTEST"){network="LTC"}
+  if (value.startsWith('tltc')) return 'LTCTEST';
+  if (value.startsWith('ltc')) return 'LTC';
 
-      if (!m || typeof m !== 'number' || m <= 0) {
-        console.error('Invalid "m":', m);
-        sendResponse({ success: false, error: 'Invalid "m" value', payload });
-        return true; // Exit early
-      }
+  return null;
+};
 
-      if (!pubkeys || !Array.isArray(pubkeys)) {
-        console.error('Invalid "pubkeys":', pubkeys);
-        sendResponse({ success: false, error: 'Invalid "pubkeys" value', payload });
-        return true; // Exit early
-      }
+const normalizeStoredAddressRecord = (item) => {
+  if (typeof item === 'string') {
+    return {
+      address: item,
+      pubkey: null,
+      network: normalizeNetworkId(inferNetworkFromAddress(item)),
+    };
+  }
 
-      // Retrieve existing multisigs from chrome.storage.local
-      chrome.storage.local.get(['multisigs'], (result) => {
-        let multisigs = result.multisigs || [];
-        console.log('Retrieved multisigs:', multisigs);
-        let prefix = "ltc"
-        if(network=="LTCTEST"){prefix ="tltc"}
+  if (!item || typeof item.address !== 'string') return null;
 
-        // Check for existing multisig
-        const existing = multisigs.find(
-        (ms) =>
-              ms.m === m &&
-              ms.pubkeys.length === pubkeys.length &&
-              ms.pubkeys.every((key, index) => key === pubkeys[index]) &&
-              ms.address.startsWith(prefix) // Ensure address matches the expected prefix
-        );
+  const network = normalizeNetworkId(
+    item.network ||
+    item.networkId ||
+    inferNetworkFromAddress(item.address)
+  );
 
-        if (existing) {
-          console.log('Multisig already exists:', existing);
-          payload.multisigs = multisigs
-          sendResponse({ success: true, result: existing, payload });
-          return; // Exit early if existing
-        }
+  return {
+    address: item.address,
+    pubkey: item.pubkey || item.publicKey || null,
+    network,
+  };
+};
 
-        console.log('No existing multisig found. Proceeding to add.');
+const grantSitePermission = async (origin, network) => {
+  const normalized = normalizeNetworkId(network);
+  const permissions = await getSitePermissions();
+  const approvedNetworks = Array.isArray(permissions[origin]) ? permissions[origin] : [];
 
-        // Open the popup (if needed) and process the request
-        ensurePopup(14, { m, pubkeys, network }, () => {
-          console.log('Popup ready for addMultisig. Sending addMultisigToWallet message. '+m+' '+typeof(m)+' '+pubkeys+''+network);
+  if (!approvedNetworks.includes(normalized)) {
+    permissions[origin] = [...approvedNetworks, normalized];
+    await storageSet({ [SITE_PERMISSIONS_KEY]: permissions });
+  }
 
-          chrome.runtime.sendMessage(
-            {
-              method: 'addMultisigToWallet',
-              payload: { m, pubkeys, network }, // Pass the payload
-            },
-            (response) => {
-              if (response?.success) {
-                console.log('Successfully added multisig:', response.result);
+  return permissions[origin];
+};
 
-                // Add the new multisig to the list
-                multisigs.push({ m, pubkeys, network });
+const resolveApprovedNetwork = async (origin, network) => {
+  const requested = network ? normalizeNetworkId(network) : null;
+  const approvedNetworks = await getApprovedNetworks(origin);
 
-                // Save the updated multisigs list back to chrome.storage.local
-                chrome.storage.local.set({ multisigs }, () => {
-                  console.log('Updated multisigs saved.');
-                  //closePopup();
-                  sendResponse({ success: true, result: response.result, payload });
-                });
-              } else {
-                console.error('Error in addMultisigToWallet:', response.error);
-                closePopup();
-                sendResponse({ success: false, error: response.error, payload });
-              }
-            }
-          );
-        });
-      });
-
-      return true; // Keep port open for async response
+  if (requested) {
+    if (!approvedNetworks.includes(requested)) {
+      throw new Error(`Origin ${origin} is not approved for ${requested}.`);
     }
+    return requested;
+  }
 
+  if (!approvedNetworks.length) {
+    throw new Error(`Origin ${origin} is not approved.`);
+  }
 
-  case 'signMessage': {
-      console.log('message payload '+payload.params.message)
-      openPopup(13, payload.params.message)
-      console.log('Requesting popup to sign message...' +message);
-      chrome.runtime.sendMessage(
-        { method: 'signMessage', payload: { messageToSign: payload.params.message } },
-        (response) => {
-          if (response?.success) {
-            console.log('Message pushed to sign:', response.signedMessage);
-            sendResponse({ success: true, result: response.signedMessage, payload: payload  });
-          } else {
-            console.error('Failed to sign message');
-            sendResponse({ success: false, error: 'Sign message failed', payload: payload  });
-          }
-        }
-      );
-      return true; // Keep port open for async response
-    }
+  return approvedNetworks[0];
+};
 
-    case 'signTransaction': {
-      // 1) Grab the transaction from the payload
-      const { transaction, network } = payload.params;
-      console.log('Transaction to sign:', transaction, payload);
+const getAddressesForNetwork = async (network) => {
+  const normalized = normalizeNetworkId(network);
+  const { addresses = [] } = await storageGet(['addresses']);
+  const filtered = (addresses || [])
+    .map(normalizeStoredAddressRecord)
+    .filter((item) => item && item.network === normalized);
 
-      // 2) Generate some ID for correlating request/response
-      const requestId = Date.now().toString(); 
-      // 3) Store this `sendResponse` so we can call it later
-      pendingRequests[requestId] = { sendResponse, payload };
+  if (!filtered.length) {
+    throw new Error(`No ${normalized} address is available in wallet storage.`);
+  }
 
-      // 4) Open the popup with a `step=13` and pass the requestId in the query
-      openPopup(13, requestId);
+  return filtered;
+};
 
-      // 5) Return true to keep this message channel open
+const getExistingMultisig = async (m, pubkeys, network) => {
+  const normalized = normalizeNetworkId(network);
+  const { multisigs = [] } = await storageGet(['multisigs']);
+
+  return (multisigs || []).find(
+    (item) =>
+      item?.m === m &&
+      Array.isArray(item.pubkeys) &&
+      item.pubkeys.length === pubkeys.length &&
+      item.pubkeys.every((pubkey, index) => pubkey === pubkeys[index]) &&
+      typeof item.address === 'string' &&
+      normalizeNetworkId(item.network || inferNetworkFromAddress(item.address)) === normalized
+  );
+};
+
+const ensurePopup = async (step, requestId) => {
+  if (popupWindowId != null) {
+    await removeWindow(popupWindowId);
+  }
+
+  popupWindowId = null;
+  popupRequestId = requestId;
+
+  const popupWindow = await createPopupWindow(getPopupUrl(step, requestId));
+  popupWindowId = popupWindow?.id ?? null;
+};
+
+const closePopup = async () => {
+  const currentWindowId = popupWindowId;
+  popupWindowId = null;
+  popupRequestId = null;
+
+  if (currentWindowId != null) {
+    await removeWindow(currentWindowId);
+  }
+};
+
+const createPendingRequest = (requestId, kind, context, params, sendResponse) => {
+  if (pendingRequests.has(requestId)) {
+    throw new Error(`Duplicate request id: ${requestId}`);
+  }
+
+  pendingRequests.set(requestId, {
+    kind,
+    context,
+    params,
+    sendResponse,
+  });
+};
+
+const settlePendingRequest = async (requestId, handler) => {
+  const pending = pendingRequests.get(requestId);
+  if (!pending) {
+    throw new Error(`No pending request found for ${requestId}.`);
+  }
+
+  pendingRequests.delete(requestId);
+
+  if (popupRequestId === requestId) {
+    await closePopup();
+  }
+
+  await handler(pending);
+};
+
+const rejectPendingRequest = async (requestId, reason) => {
+  await settlePendingRequest(requestId, async (pending) => {
+    respondError(pending.sendResponse, reason || 'The request was rejected.');
+  });
+};
+
+const resolvePendingRequest = async (requestId, result) => {
+  await settlePendingRequest(requestId, async (pending) => {
+    respondSuccess(pending.sendResponse, result);
+  });
+};
+
+const dispatchPendingRequestToPopup = async (requestId) => {
+  const pending = pendingRequests.get(requestId);
+  if (!pending) {
+    throw new Error(`No pending request found for ${requestId}.`);
+  }
+
+  const { context, kind, params } = pending;
+  let message = null;
+
+  if (kind === 'connect') {
+    message = {
+      method: 'connectApprovalRequest',
+      payload: {
+        requestId,
+        origin: context.origin,
+        network: params.network,
+      },
+    };
+  } else if (kind === 'signMessage') {
+    message = {
+      method: 'signMessageRequest',
+      payload: {
+        requestId,
+        origin: context.origin,
+        network: params.network,
+        messageToSign: params.message,
+      },
+    };
+  } else if (kind === 'signPsbt') {
+    message = {
+      method: 'signPsbtRequest',
+      payload: {
+        requestId,
+        origin: context.origin,
+        network: params.network,
+        sellerFlag: !!params.sellerFlag,
+        redeemScript: params.redeemScript,
+        txToSign: params.psbtHex,
+      },
+    };
+  } else if (kind === 'signTransaction') {
+    message = {
+      method: 'signTxRequest',
+      payload: {
+        requestId,
+        origin: context.origin,
+        network: params.network,
+        txToSign: params.transaction,
+      },
+    };
+  } else if (kind === 'addMultisig') {
+    message = {
+      method: 'addMultisigRequest',
+      payload: {
+        requestId,
+        origin: context.origin,
+        network: params.network,
+        m: params.m,
+        pubkeys: params.pubkeys,
+      },
+    };
+  }
+
+  if (!message) {
+    throw new Error(`Unsupported popup request type: ${kind}`);
+  }
+
+  await sendRuntimeMessage(message);
+};
+
+const handleConnect = async (requestId, context, params, sendResponse) => {
+  const network = normalizeNetworkId(params?.network);
+  const approvedNetworks = await getApprovedNetworks(context.origin);
+  debugLog('connect state', { origin: context.origin, network, approvedNetworks });
+
+  if (approvedNetworks.includes(network)) {
+    const accounts = await getAddressesForNetwork(network);
+    debugLog('connect immediate accounts', { network, accounts });
+    respondSuccess(sendResponse, accounts);
+    return;
+  }
+
+  createPendingRequest(requestId, 'connect', context, { network }, sendResponse);
+  await ensurePopup(17, requestId);
+};
+
+const handleRequestAccounts = async (context, params, sendResponse) => {
+  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const accounts = await getAddressesForNetwork(network);
+  debugLog('requestAccounts response', { origin: context.origin, network, accounts });
+  respondSuccess(sendResponse, accounts);
+};
+
+const handleSignMessage = async (requestId, context, params, sendResponse) => {
+  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const message = typeof params?.message === 'string' ? params.message : '';
+
+  if (!message) {
+    throw new Error('A message string is required for signMessage.');
+  }
+
+  createPendingRequest(
+    requestId,
+    'signMessage',
+    context,
+    { network, message },
+    sendResponse
+  );
+  await ensurePopup(13, requestId);
+};
+
+const handleSignPsbt = async (requestId, context, params, sendResponse) => {
+  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const psbtHex =
+    typeof params?.psbtHex === 'string'
+      ? params.psbtHex
+      : typeof params?.transaction === 'string'
+        ? params.transaction
+        : '';
+
+  if (!psbtHex) {
+    throw new Error('A psbtHex string is required for signPsbt.');
+  }
+
+  createPendingRequest(
+    requestId,
+    'signPsbt',
+    context,
+    {
+      network,
+      psbtHex,
+      sellerFlag: !!params?.sellerFlag,
+      redeemScript: params?.redeemScript,
+    },
+    sendResponse
+  );
+  await ensurePopup(16, requestId);
+};
+
+const handleSignTransaction = async (requestId, context, params, sendResponse) => {
+  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const transaction = params?.transaction || params?.txHex || params?.txToSign;
+
+  if (!transaction) {
+    throw new Error('A transaction payload is required for signTransaction.');
+  }
+
+  createPendingRequest(
+    requestId,
+    'signTransaction',
+    context,
+    { network, transaction },
+    sendResponse
+  );
+  await ensurePopup(13, requestId);
+};
+
+const handleAddMultisig = async (requestId, context, params, sendResponse) => {
+  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const m = Number(params?.m);
+  const pubkeys = Array.isArray(params?.pubkeys) ? params.pubkeys : [];
+
+  if (!Number.isInteger(m) || m <= 0) {
+    throw new Error('A positive multisig threshold is required.');
+  }
+
+  if (!pubkeys.length) {
+    throw new Error('At least one multisig pubkey is required.');
+  }
+
+  const existing = await getExistingMultisig(m, pubkeys, network);
+  if (existing) {
+    respondSuccess(sendResponse, existing);
+    return;
+  }
+
+  createPendingRequest(
+    requestId,
+    'addMultisig',
+    context,
+    { network, m, pubkeys },
+    sendResponse
+  );
+  await ensurePopup(18, requestId);
+};
+
+const handleProviderRequest = async (message, sender, sendResponse) => {
+  if (message.channel !== CHANNEL || message.type !== 'providerRequest') {
+    return false;
+  }
+
+  const { data } = message;
+  const requestId = typeof data?.id === 'string' ? data.id : null;
+  const method = normalizeProviderMethod(data?.method);
+  const params = data?.params || {};
+  debugLog('providerRequest', { requestId, method, params, senderUrl: sender.url });
+
+  if (!requestId) {
+    respondError(sendResponse, 'Provider request id is missing.');
+    return true;
+  }
+
+  if (!PAGE_METHODS.has(method)) {
+    respondError(sendResponse, `Unsupported provider method: ${method}`);
+    return true;
+  }
+
+  const context = getSenderContext(sender);
+  if (!context || !isAllowedOrigin(context.origin)) {
+    respondError(sendResponse, 'This origin is not allowed to access the wallet.');
+    return true;
+  }
+
+  try {
+    if (method === 'keepAlive') {
+      respondSuccess(sendResponse, 'ok');
       return true;
     }
 
-     case 'popupReady': {
-      const { requestId } = payload;
-      console.log('Popup is ready for requestId= '+JSON.stringify(requestId));
-
-      // Retrieve the "pending request" data
-      const requestEntry = pendingRequests[requestId];
-       console.log('Request Entry:', requestEntry);
-      if (!requestEntry) {
-        console.error('No pending request found for requestId:', requestId);
-        break;
-      }
-
-      // We have the transaction in requestEntry.payload.params.transaction
-      const { transaction, network, sellerFlag } = requestEntry.payload.params;
-      console.log('request entry payload in popupReady '+JSON.stringify(requestEntry.payload))
-      if(requestEntry.payload.psbt){
-          const {psbtHex } = requestEntry.payload.params
-         console.log('psbt flag true in popupReady')
-         chrome.runtime.sendMessage({
-          method: 'signPsbtRequest',
-          payload: { requestId, txToSign: psbtHex, network: network, sellerFlag: sellerFlag },
-        });
-         break
-      }
-      console.log('checking transaction in popup ready '+transaction)
-      // Now that the popup is ready, send the popup a signTxRequest
-        chrome.runtime.sendMessage({
-          method: 'signTxRequest',
-          payload: { requestId, txToSign: transaction, network: network },
-        });
-      break;
+    if (method === 'connect') {
+      await handleConnect(requestId, context, params, sendResponse);
+      return true;
     }
 
-    case 'signTxResponse': {
-      // e.g. user is done signing
-      const { requestId, signedTx } = payload;
-
-      // Find the original request callback
-      const requestEntry = pendingRequests[requestId];
-      if (!requestEntry) {
-        console.error('No pending request found for requestId:', requestId);
-        return true; // or false
-      }
-
-      // call the saved sendResponse from the signTransaction call
-      requestEntry.sendResponse({
-        success: true,
-        result: signedTx,
-        payload: requestEntry.payload
-      });
-
-      // Cleanup
-      delete pendingRequests[requestId];
-
-      // Optionally close the popup
-      closePopup();
-
-      break;
+    if (method === 'requestAccounts') {
+      await handleRequestAccounts(context, params, sendResponse);
+      return true;
     }
 
-    case 'signPsbt': {
-  const { psbtHex, network, sellerFlag } = payload.params;
-  console.log('Requesting popup to sign PSBT:', { psbtHex, network, sellerFlag });
-  payload.psbt=true
-  const requestId = Date.now().toString();
-  pendingRequests[requestId] = { sendResponse, payload };
-
-  console.log(`Ensuring popup is ready for requestId=${requestId}`);
-
-  // Use ensurePopup to open and prepare the popup
-  openPopup(16, requestId)
-
-  return true; // Keep the port open for async response
-}
-
-
-
-    case 'keepAlive': {
-      console.log('Handling keepAlive');
-      sendResponse({ success: true, result: 'Still alive!', payload: payload  });
-      break;
+    if (method === 'signMessage') {
+      await handleSignMessage(requestId, context, params, sendResponse);
+      return true;
     }
 
-    case 'signResponse': {
-      console.log('Signed message received:', payload.signedMessage);
-
-      // Propagate the result to the content script or window
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(
-            tabs[0].id,
-            {
-              type: 'signResult',
-              payload: { signedMessage: payload.signedMessage },
-            },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                console.error('Error sending sign result:', chrome.runtime.lastError.message);
-              } else {
-                console.log('Sign result sent to content script:', response);
-              }
-            }
-          );
-        }
-      });
-
-      sendResponse({ success: true });
-      return true; // Keep the port open for async responses
+    if (method === 'signPsbt') {
+      await handleSignPsbt(requestId, context, params, sendResponse);
+      return true;
     }
 
-    case 'txResponse': {
-      console.log('Transaction ID received:', payload.txid);
-
-      // Propagate the result to the content script or window
-      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-        if (tabs[0]?.id) {
-          chrome.tabs.sendMessage(
-            tabs[0].id,
-            {
-              type: 'txResult',
-              payload: { txid: payload.txid },
-            },
-            (response) => {
-              if (chrome.runtime.lastError) {
-                console.error('Error sending tx result:', chrome.runtime.lastError.message);
-              } else {
-                console.log('Transaction result sent to content script:', response);
-              }
-            }
-          );
-        }
-      });
-
-      sendResponse({ success: true });
-      return true; // Keep the port open for async responses
+    if (method === 'signTransaction') {
+      await handleSignTransaction(requestId, context, params, sendResponse);
+      return true;
     }
 
-    case 'fetchUserIP': {
-      let ipAddress = '';
-      const ipFetchUrls = [
-        'http://ip-api.com/json',
-        'https://api.ipify.org?format=json',
-      ];
-
-      const fetchIP = async () => {
-        for (const url of ipFetchUrls) {
-          try {
-            const response = await fetch(url);
-            const data = await response.json();
-            if (data?.ip) {
-              ipAddress = data.ip; // For ipify.org
-              console.log(`IP fetched from ${url}: ${ipAddress}`);
-              break;
-            } else if (data?.query) { // For ip-api.com
-              ipAddress = data.query;
-              console.log(`IP fetched from ${url}: ${ipAddress}`);
-              break;
-            }
-          } catch (error) {
-            console.error(`Failed to fetch IP from ${url}:`, error.message);
-          }
-        }
-
-        if (!ipAddress) {
-          sendResponse({
-            success: false,
-            error: 'Unable to fetch public IP from all sources.',
-            payload,
-          });
-          return;
-        }
-
-        // Fetch details about the IP from vpnapi.io
-        const primaryUrl = `https://vpnapi.io/api/${ipAddress}?key=${VPNAPI_KEY}`;
-        const secondaryUrl = `https://api.criminalip.io/v1/asset/ip/report?ip=${ipAddress}`;
-
-        try {
-          const primaryResponse = await fetch(primaryUrl);
-
-          if (!primaryResponse.ok) {
-            throw new Error('Primary API response was not OK.');
-          }
-
-          const primaryData = await primaryResponse.json();
-
-          // Parse the response for VPN and country details
-          const isVpn =
-            primaryData?.security?.vpn ||
-            primaryData?.security?.proxy ||
-            primaryData?.security?.tor ||
-            primaryData?.security?.relay ||
-            false;
-
-          const countryCode = primaryData?.location?.country_code || 'Unknown';
-
-          sendResponse({
-            success: true,
-            result: {
-              ip: ipAddress,
-              isVpn,
-              countryCode,
-            },
-            payload,
-          });
-        } catch (primaryError) {
-          console.error('Error fetching IP details from vpnapi.io:', primaryError.message);
-
-          // Fallback to Criminal IP API
-          try {
-            const secondaryResponse = await fetch(secondaryUrl, {
-              headers: {
-                'x-api-key': CRIMINAL_IP_API_KEY,
-              },
-            });
-
-            if (!secondaryResponse.ok) {
-              throw new Error('Secondary API response was not OK.');
-            }
-
-            const secondaryData = await secondaryResponse.json();
-
-            const isVpn =
-              secondaryData?.issues?.is_vpn ||
-              secondaryData?.issues?.is_proxy ||
-              secondaryData?.issues?.is_tor ||
-              false;
-
-            const countryCode =
-              secondaryData?.whois?.data?.[0]?.org_country_code || 'Unknown';
-
-            sendResponse({
-              success: true,
-              result: {
-                ip: ipAddress,
-                isVpn,
-                countryCode,
-              },
-              payload,
-            });
-          } catch (secondaryError) {
-            console.error('Error fetching IP details from Criminal IP:', secondaryError.message);
-            sendResponse({
-              success: false,
-              error: 'Failed to fetch IP details from both APIs.',
-              payload,
-            });
-          }
-        }
-      };
-
-      fetchIP(); // Call the async function
-      return true; // Keep the message port open for asynchronous response
+    if (method === 'addMultisig') {
+      await handleAddMultisig(requestId, context, params, sendResponse);
+      return true;
     }
-
-    default: {
-      console.error(`Unknown method: ${method}`);
-      sendResponse({ success: false, error: 'Unknown method' });
+  } catch (error) {
+    respondError(sendResponse, error);
+    if (pendingRequests.has(requestId)) {
+      pendingRequests.delete(requestId);
     }
+    if (popupRequestId === requestId) {
+      await closePopup();
+    }
+    return true;
   }
-  return true
+
+  respondError(sendResponse, `Unhandled provider method: ${method}`);
+  return true;
+};
+
+chrome.windows.onRemoved.addListener((windowId) => {
+  if (windowId !== popupWindowId) return;
+
+  const requestId = popupRequestId;
+  popupWindowId = null;
+  popupRequestId = null;
+
+  if (requestId && pendingRequests.has(requestId)) {
+    rejectPendingRequest(requestId, 'The approval window was closed.').catch((error) => {
+      console.error('Failed to reject request after popup close:', error);
+    });
+  }
 });
 
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.channel === CHANNEL && message?.type === 'providerRequest') {
+    handleProviderRequest(message, sender, sendResponse).catch((error) => {
+      debugLog('providerRequest failed', error);
+      respondError(sendResponse, error);
+    });
+    return true;
+  }
+
+  if (!message?.method) {
+    return false;
+  }
+
+  if (
+    ['popupReady', 'approvalDecision', 'signMessageResponse', 'signTxResponse', 'addMultisigResponse', 'rejectPendingRequest'].includes(message.method) &&
+    !isPopupSender(sender)
+  ) {
+    respondError(sendResponse, 'Popup-only method called from an invalid sender.');
+    return true;
+  }
+
+  if (message.method === 'popupReady') {
+    dispatchPendingRequestToPopup(message.payload?.requestId)
+      .then(() => respondSuccess(sendResponse, true))
+      .catch((error) => respondError(sendResponse, error));
+    return true;
+  }
+
+  if (message.method === 'approvalDecision') {
+    const requestId = message.payload?.requestId;
+    const approved = !!message.payload?.approved;
+
+    (async () => {
+      const pending = pendingRequests.get(requestId);
+      if (!pending || pending.kind !== 'connect') {
+        throw new Error(`No pending connect request found for ${requestId}.`);
+      }
+
+      if (!approved) {
+        await rejectPendingRequest(requestId, 'User rejected site connection.');
+        respondSuccess(sendResponse, true);
+        return;
+      }
+
+      await grantSitePermission(pending.context.origin, pending.params.network);
+      const accounts = await getAddressesForNetwork(pending.params.network);
+
+      await resolvePendingRequest(requestId, accounts);
+      sendProviderEvent(pending.context, 'accountsChanged', accounts);
+      sendProviderEvent(pending.context, 'networkChanged', pending.params.network);
+      respondSuccess(sendResponse, true);
+    })().catch((error) => respondError(sendResponse, error));
+
+    return true;
+  }
+
+  if (message.method === 'signMessageResponse') {
+    resolvePendingRequest(message.payload?.requestId, message.payload?.signedMessage)
+      .then(() => respondSuccess(sendResponse, true))
+      .catch((error) => respondError(sendResponse, error));
+    return true;
+  }
+
+  if (message.method === 'signTxResponse') {
+    const signedTx = message.payload?.signedTx?.data || message.payload?.signedTx;
+    resolvePendingRequest(message.payload?.requestId, signedTx)
+      .then(() => respondSuccess(sendResponse, true))
+      .catch((error) => respondError(sendResponse, error));
+    return true;
+  }
+
+  if (message.method === 'addMultisigResponse') {
+    resolvePendingRequest(message.payload?.requestId, message.payload?.result)
+      .then(() => respondSuccess(sendResponse, true))
+      .catch((error) => respondError(sendResponse, error));
+    return true;
+  }
+
+  if (message.method === 'rejectPendingRequest') {
+    rejectPendingRequest(message.payload?.requestId, message.payload?.reason)
+      .then(() => respondSuccess(sendResponse, true))
+      .catch((error) => respondError(sendResponse, error));
+    return true;
+  }
+
+  return false;
+});

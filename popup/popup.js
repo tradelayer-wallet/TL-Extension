@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Provider, useSelector, useDispatch } from 'react-redux';
+import { Provider, useDispatch, useSelector } from 'react-redux';
 import store from '../store/store';
 import '../styles.css';
 import SeedPhraseGeneration from '../components/SeedPhraseGeneration';
@@ -8,155 +8,277 @@ import PasswordSetup from '../components/PasswordSetup';
 import PasswordPrompt from '../components/PasswordPrompt';
 import SeedPhraseConfirmation from '../components/SeedPhraseConfirmation';
 import SeedPhraseImport from '../components/SeedPhraseImport';
-import ShowSeedPhrase from '../components/showSeedPhrase';  
-import Balances from '../components/balance'
-import Send from '../components/Send'
-import Lock from '../components/lock'
-import Withdraw from '../components/withdraw'
-import Settings from '../components/settings'
-import ExposeSeed from '../components/ExposeSeed'
-import SignTransaction from '../components/signTransaction'
-import SignPSBT from '../components/signPSBT'
-import ShowTx from '../components/ShowTx'
-import ResetPass from '../components/ResetPass'
-import {addMultisigAddress, buildUnsignedPSBT} from '../lib/walletUtils'
-import { setStep, setSeedPhrase, setMessageToSign, 
-setTxToSign, setSignRequest, setPSBTRequest, setPSBTToSign, setRequestId, setNetwork } from '../store/store'; // Import necessary actions
+import ShowSeedPhrase from '../components/showSeedPhrase';
+import Balances from '../components/balance';
+import Send from '../components/Send';
+import Lock from '../components/lock';
+import Withdraw from '../components/withdraw';
+import Settings from '../components/settings';
+import ExposeSeed from '../components/ExposeSeed';
+import SignTransaction from '../components/SignTransaction';
+import SignPSBT from '../components/signPSBT';
+import ShowTx from '../components/ShowTx';
+import ResetPass from '../components/ResetPass';
+import SiteApproval from '../components/SiteApproval';
+import MultisigApproval from '../components/MultisigApproval';
+import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
+import {
+  setAddress,
+  setApprovalRequest,
+  setMessageToSign,
+  setNetwork,
+  setPSBTRequest,
+  setPSBTToSign,
+  setPubKey,
+  setRequestId,
+  setRequestOrigin,
+  setSeedPhrase,
+  setSignRequest,
+  setStep,
+  setTxToSign,
+} from '../store/store';
+
+const normalizeWalletNetwork = (network) => {
+  const value = String(network || 'LTC').trim().toUpperCase();
+
+  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
+  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
+  if (value === 'TESTNET') return 'LTCTEST';
+  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
+  if (value === 'LTC' || value === 'LTCTEST') return value;
+
+  return value;
+};
+
+const inferWalletNetworkFromAddress = (address) => {
+  if (typeof address !== 'string') return null;
+  const value = address.trim().toLowerCase();
+
+  if (value.startsWith('tltc')) return 'LTCTEST';
+  if (value.startsWith('ltc')) return 'LTC';
+
+  return null;
+};
+
+const pickStoredWalletAccount = (addresses, preferredNetwork) => {
+  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          address: item,
+          pubkey: null,
+          network: normalizeWalletNetwork(
+            inferWalletNetworkFromAddress(item) || normalizedPreferred
+          ),
+        };
+      }
+
+      if (!item || typeof item.address !== 'string') return null;
+
+      const network = normalizeWalletNetwork(
+        item.network ||
+        item.networkId ||
+        inferWalletNetworkFromAddress(item.address) ||
+        normalizedPreferred
+      );
+
+      return {
+        address: item.address,
+        pubkey: item.pubkey || item.publicKey || null,
+        network,
+      };
+    })
+    .filter(Boolean);
+
+  return (
+    normalizedAccounts.find((item) => item.network === normalizedPreferred) ||
+    normalizedAccounts[0] ||
+    null
+  );
+};
 
 const App = () => {
-  const [passwordStep, setPasswordStep] = useState(false);
   const dispatch = useDispatch();
-  // Redux step state
-  const step = useSelector((state) => state.step); // Access step from Redux store
+  const step = useSelector((state) => state.step);
   const address = useSelector((state) => state.address);
+  const network = useSelector((state) => state.network);
+
+  useEffect(() => {
+    const listener = (message, sender, sendResponse) => {
+      console.log('inside listener in popup.js ' + JSON.stringify(message));
+
+      if (message.method === 'getAccount') {
+        if (address) {
+          sendResponse({ success: true, accounts: [address] });
+          return true;
+        }
+
+        chrome.storage.local.get(['addresses'], (result) => {
+          const stored = pickStoredWalletAccount(result.addresses || [], network);
+          sendResponse({
+            success: true,
+            accounts: stored?.address ? [stored.address] : [],
+          });
+        });
+        return true;
+      }
+
+      if (message.method === 'buildUTXOTrade') {
+        const { config, outputs, network, satsPaid } = message.payload;
+        try {
+          const psbt = buildUnsignedPSBT({
+            buyerKeyPair: config.buyerKeyPair,
+            sellerKeyPair: config.sellerKeyPair,
+            amount: config.amount,
+            payload: config.payload,
+            commitUTXOs: config.commitUTXOs,
+            outputs,
+            network,
+            satsPaid,
+          });
+          sendResponse({ success: true, result: psbt });
+        } catch (error) {
+          console.error('Error in walletUtils buildUTXOTrade:', error.message);
+          sendResponse({ success: false, error: error.message });
+        }
+        return true;
+      }
+
+      if (message.method === 'addMultisigToWallet') {
+        try {
+          const { m, pubkeys, network } = message.payload;
+          const result = addMultisigAddress(m, pubkeys, network);
+          sendResponse({ success: true, result });
+        } catch (error) {
+          console.error('Error in addMultisig:', error.message);
+          sendResponse({ success: false, error: error.message });
+        }
+        return true;
+      }
+
+      if (message.method === 'signMessageRequest') {
+        const { messageToSign, network, requestId, origin } = message.payload;
+        dispatch(setMessageToSign(messageToSign));
+        dispatch(setTxToSign(null));
+        dispatch(setNetwork(network || 'LTC'));
+        dispatch(setRequestOrigin(origin || null));
+        dispatch(setRequestId(requestId));
+        dispatch(setSignRequest(true));
+        dispatch(setStep(13));
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.method === 'signTxRequest') {
+        const { txToSign, network, requestId, origin } = message.payload;
+        dispatch(setMessageToSign(null));
+        dispatch(setTxToSign(txToSign));
+        dispatch(setNetwork(network));
+        dispatch(setRequestOrigin(origin || null));
+        dispatch(setSignRequest(true));
+        dispatch(setRequestId(requestId));
+        dispatch(setStep(13));
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.method === 'signPsbtRequest') {
+        const { txToSign, network, sellerFlag, redeemScript, requestId, origin } = message.payload;
+        dispatch(setPSBTToSign(txToSign, redeemScript));
+        dispatch(setNetwork(network));
+        dispatch(setRequestOrigin(origin || null));
+        dispatch(setPSBTRequest(sellerFlag));
+        dispatch(setRequestId(requestId));
+        dispatch(setStep(16));
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.method === 'connectApprovalRequest') {
+        dispatch(setApprovalRequest({
+          kind: 'connect',
+          origin: message.payload.origin,
+          network: message.payload.network,
+          requestId: message.payload.requestId,
+        }));
+        dispatch(setRequestOrigin(message.payload.origin || null));
+        dispatch(setRequestId(message.payload.requestId));
+        dispatch(setStep(17));
+        sendResponse({ success: true });
+        return true;
+      }
+
+      if (message.method === 'addMultisigRequest') {
+        dispatch(setApprovalRequest({
+          kind: 'addMultisig',
+          origin: message.payload.origin,
+          network: message.payload.network,
+          requestId: message.payload.requestId,
+          m: message.payload.m,
+          pubkeys: message.payload.pubkeys,
+        }));
+        dispatch(setRequestOrigin(message.payload.origin || null));
+        dispatch(setRequestId(message.payload.requestId));
+        dispatch(setStep(18));
+        sendResponse({ success: true });
+        return true;
+      }
+
+      return false;
+    };
+
+    chrome.runtime.onMessage.addListener(listener);
+    return () => chrome.runtime.onMessage.removeListener(listener);
+  }, [address, network, dispatch]);
+
   useEffect(() => {
     const queryString = new URLSearchParams(window.location.search);
     const stepParam = queryString.get('step');
-    const messageParam = queryString.get('message')
     const requestId = queryString.get('message');
-    const decodedMessage = messageParam ? decodeURIComponent(messageParam) : null;
 
     console.log('Query string in popup:', window.location.search);
     console.log('Step param:', stepParam);
-    console.log('Message param:', decodedMessage);
-   
-    if ((stepParam === '13'||stepParam==='16') && requestId) {
-      // Let the background script know this popup is ready
+    console.log('Request ID:', requestId);
+
+    if (stepParam && requestId && ['13', '16', '17', '18'].includes(stepParam)) {
       chrome.runtime.sendMessage({
         method: 'popupReady',
         payload: { requestId },
       });
     }
 
+    const encryptedSeed = localStorage.getItem('encryptedSeed');
     if (stepParam) {
-      const initialStep = parseInt(stepParam, 10);
-      dispatch(setSignRequest(true));
-      if (decodedMessage) {
-        localStorage.setItem('messageToSign', decodedMessage); // Save to local storage
-      }
-      dispatch(setStep(initialStep));
-      console.log(`Popup initialized with step: ${initialStep}`);
+      dispatch(setStep(parseInt(stepParam, 10)));
     } else {
-      const encryptedSeed = localStorage.getItem('encryptedSeed');
-      if (encryptedSeed) {
-        dispatch(setStep(6)); // Password prompt
-      } else {
-        dispatch(setStep(1)); // Seed generation
-      }
+      dispatch(setStep(encryptedSeed ? 6 : 1));
     }
-  }, [dispatch]);
 
+    chrome.storage.local.get(['addresses'], (result) => {
+      const stored = pickStoredWalletAccount(result.addresses || [], network);
+      if (!stored?.address) {
+        return;
+      }
+
+      dispatch(setAddress(stored.address));
+      if (stored.pubkey) {
+        dispatch(setPubKey(stored.pubkey));
+      }
+      if (stored.network && stored.network !== network) {
+        dispatch(setNetwork(stored.network));
+      }
+    });
+  }, [dispatch]);
 
   useEffect(() => {
     console.log('Current step after dispatch:', step);
-  }, [step]);  // This will log the new step value whenever it changes
+  }, [step]);
 
   const handleGenerateSeed = (generatedSeed) => {
-    dispatch(setSeedPhrase(generatedSeed));  // Store the generated seed in Redux
-    dispatch(setStep(2));  // Move to the next step
+    dispatch(setSeedPhrase(generatedSeed));
+    dispatch(setStep(2));
   };
-
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log('inside listener in popup.js '+JSON.stringify(message))
-    if (message.method === 'getAccount') {
-      const accounts = []
-      accounts.push(address)
-      sendResponse({ success: true, accounts });
-    }
-
-    if(message.method ==='buildUTXOTrade'){
-      const { config, outputs, network, satsPaid } = message.payload
-      console.log('inside popup utxo trade '+JSON.stringify(message.payload))
-      console.log('config buyerKeyPair is '+JSON.stringify(config.buyerKeyPair))
-
-        try{
-          const psbt = buildUnsignedPSBT({
-          buyerKeyPair: config.buyerKeyPair,
-          sellerKeyPair: config.sellerKeyPair,
-          amount: config.amount,
-          payload: config.payload,
-          commitUTXOs: config.commitUTXOs,
-          outputs: outputs,
-          network: network,
-          satsPaid: satsPaid
-        });
-      sendResponse({ success: true, result: psbt });
-
-      }catch (error) {
-        console.error('Error in walletUtils buildUTXOTrade:', error.message);
-        sendResponse({ success: false, error: error.message });
-      }
-    }
-
-    if (message.method === 'addMultisigToWallet') {
-      try {
-        const { m, pubkeys, network } = message.payload;
-        const result = addMultisigAddress(m, pubkeys, network); // Execute the function here
-        sendResponse({ success: true, result });
-      } catch (error) {
-        console.error('Error in addMultisig:', error.message);
-        sendResponse({ success: false, error: error.message });
-      }
-    }
-
-   if (message.method === 'signTxRequest') {
-      const messageToSign = message.payload.txToSign;
-      const network = message.payload.network;
-      const requestId = message.payload.requestId;
-
-      console.log('inside signTxRequest:', messageToSign, JSON.stringify(message.payload));
-
-      // Debugging: Log values before dispatch
-      console.log('Dispatching requestId:', requestId);
-
-      // Store the message and set the signing step
-      dispatch(setTxToSign(messageToSign));
-      dispatch(setNetwork(network));
-      dispatch(setSignRequest(true));
-      dispatch(setRequestId(requestId)); // Ensure this updates correctly
-      dispatch(setStep(13)); // Go to the signing page
-
-      // Log Redux state after dispatches
-      console.log('Updated Redux state:', store.getState());
-
-      sendResponse({ success: true });
-    }
-
-
-    if (message.method === 'signPsbtRequest') {
-        const { txToSign, network, sellerFlag, redeemScript } = message.payload;  // ← ADDED redeemScript
-        console.log('psbt hex in popup', sellerFlag, txToSign, message.payload.requestId);
-        console.log('redeemScript in popup:', redeemScript);  // ← Debug log
-        
-        // Store the PSBT data and redeemScript
-        dispatch(setPSBTToSign(txToSign, redeemScript));  // ← PASS redeemScript
-        dispatch(setNetwork(network));
-        dispatch(setPSBTRequest(sellerFlag));
-        dispatch(setRequestId(message.payload.requestId));
-        dispatch(setStep(16));
-        sendResponse({ success: true });
-    }
-  });
 
   return (
     <div className="app-container">
@@ -164,28 +286,24 @@ const App = () => {
         <img src="../images/icon128.png" alt="SidePit Logo" />
       </div>
       <div>
-        {passwordStep ? (
-          <PasswordPrompt onPasswordSubmit={handlePasswordSubmit} />
-        ) : (
-          <>
-            {step === 1 && <SeedPhraseGeneration />}
-            {step === 2 && <ShowSeedPhrase />}
-            {step === 3 && <SeedPhraseConfirmation />}
-            {step === 4 && <PasswordSetup />}
-            {step === 5 && <SeedPhraseImport />}
-            {step === 6 && <PasswordPrompt/>}
-            {step === 7 && <Balances />}
-            {step === 8 && <Send />}
-            {step === 9 && <Lock />}
-            {step === 10 && <Withdraw />}
-            {step === 11 && <Settings />}
-            {step === 12 && <ExposeSeed />}
-            {step === 13 && <SignTransaction/>}
-            {step === 14 && <ShowTx />}
-            {step === 15 && <ResetPass />}
-            {step === 16 && <SignPSBT />}
-          </>
-        )}
+        {step === 1 && <SeedPhraseGeneration onGenerateSeed={handleGenerateSeed} />}
+        {step === 2 && <ShowSeedPhrase />}
+        {step === 3 && <SeedPhraseConfirmation />}
+        {step === 4 && <PasswordSetup />}
+        {step === 5 && <SeedPhraseImport />}
+        {step === 6 && <PasswordPrompt />}
+        {step === 7 && <Balances />}
+        {step === 8 && <Send />}
+        {step === 9 && <Lock />}
+        {step === 10 && <Withdraw />}
+        {step === 11 && <Settings />}
+        {step === 12 && <ExposeSeed />}
+        {step === 13 && <SignTransaction />}
+        {step === 14 && <ShowTx />}
+        {step === 15 && <ResetPass />}
+        {step === 16 && <SignPSBT />}
+        {step === 17 && <SiteApproval />}
+        {step === 18 && <MultisigApproval />}
       </div>
     </div>
   );

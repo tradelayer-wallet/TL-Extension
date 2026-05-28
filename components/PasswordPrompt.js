@@ -34,9 +34,9 @@ const PasswordPrompt = () => {
     const existingAddress = addresses.find((item) => item.address === addressData.address);
 
         if (!existingAddress) {
-          console.log('no existing address saving '+JSON.stringify({ address: addressData.address, pubkey: addressData.publicKey }))
+          console.log('no existing address saving '+JSON.stringify({ address: addressData.address, pubkey: addressData.publicKey, network: selectedNetwork }))
           // Add new address and pubkey if it doesn't already exist
-          addresses.push({ address: addressData.address, pubkey: addressData.publicKey });
+          addresses.push({ address: addressData.address, pubkey: addressData.publicKey, network: selectedNetwork });
           // Save updated addresses array back to local storage
           chrome.storage.local.set({ addresses }, () => {
             if (chrome.runtime.lastError) {

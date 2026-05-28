@@ -17,6 +17,8 @@ const initialState = {
   confirmationWord: '',
   selectedWord: '',
   confirmed: false,
+  requestOrigin: null,
+  approvalRequest: null,
 };
 
 // Action creators
@@ -77,6 +79,8 @@ export const setRequestId = (id) => (
   payload: id
 })
 export const setNetwork = (network) => ({type: SET_NETWORK, payload:network})
+export const setRequestOrigin = (origin) => ({ type: 'SET_REQUEST_ORIGIN', payload: origin })
+export const setApprovalRequest = (approvalRequest) => ({ type: 'SET_APPROVAL_REQUEST', payload: approvalRequest })
 // Reducer to manage wallet creation steps and other states
 const rootReducer = (state = initialState, action) => {
   switch (action.type) {
@@ -128,6 +132,10 @@ const rootReducer = (state = initialState, action) => {
       return { ...state, id: action.payload} 
     case 'SET_NETWORK':
       return {...state, network: action.payload}
+    case 'SET_REQUEST_ORIGIN':
+      return { ...state, requestOrigin: action.payload }
+    case 'SET_APPROVAL_REQUEST':
+      return { ...state, approvalRequest: action.payload }
     default:
       return state;
   }

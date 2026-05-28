@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TradeLayer Wallet Extension",
-  "version": "1.22",
+  "version": "1.24",
   "description": "A wallet extension for DeFi on LTC, BTC, DOGE with TradeLayer Protocol",
   "background": {
     "service_worker": "background/background.js",
@@ -9,7 +9,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*.layerwallet.com/*"],
+      "matches": [
+        "https://layerwallet.com/*",
+        "https://*.layerwallet.com/*"
+      ],
       "js": ["contentScript.js"],
       "run_at": "document_start"
     }
@@ -30,11 +33,13 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["window.js", "node_modules/events/events.js",
-        "node_modules/eth-rpc-errors/dist/error.js",
-        "node_modules/eth-rpc-errors/dist/index.js",
-        "readyPromise.js"],
+      "resources": [
+        "window.js",
+        "readyPromise.js"
+      ],
       "matches": [
+    "https://layerwallet.com/*",
+    "https://*.layerwallet.com/*",
     "https://api.layerwallet.com/*",
     "https://testnet-api.layerwallet.com/*"]
     }

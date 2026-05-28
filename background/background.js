@@ -7,6 +7,7 @@ const PAGE_METHODS = new Set([
   'signPsbt',
   'signTransaction',
   'addMultisig',
+  'fetchUserIP',
   'keepAlive',
 ]);
 const DEBUG = !!globalThis.__TRADELAYER_DEBUG__;
@@ -262,6 +263,37 @@ const getAddressesForNetwork = async (network) => {
   return filtered;
 };
 
+const getPreferredLegacyNetwork = async (network) => {
+  if (network) return normalizeNetworkId(network);
+
+  const { addresses = [] } = await storageGet(['addresses']);
+  const normalizedAccounts = (addresses || [])
+    .map(normalizeStoredAddressRecord)
+    .filter(Boolean);
+
+  if (normalizedAccounts.length === 1) {
+    return normalizedAccounts[0].network;
+  }
+
+  if (normalizedAccounts.some((item) => item.network === 'LTCTEST')) {
+    return 'LTCTEST';
+  }
+
+  if (normalizedAccounts.some((item) => item.network === 'LTC')) {
+    return 'LTC';
+  }
+
+  return 'LTC';
+};
+
+const resolveRequestNetwork = async (origin, params) => {
+  if (params?.__legacyBridge) {
+    return getPreferredLegacyNetwork(params?.network);
+  }
+
+  return resolveApprovedNetwork(origin, params?.network);
+};
+
 const getExistingMultisig = async (m, pubkeys, network) => {
   const normalized = normalizeNetworkId(network);
   const { multisigs = [] } = await storageGet(['multisigs']);
@@ -426,14 +458,14 @@ const handleConnect = async (requestId, context, params, sendResponse) => {
 };
 
 const handleRequestAccounts = async (context, params, sendResponse) => {
-  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const network = await resolveRequestNetwork(context.origin, params);
   const accounts = await getAddressesForNetwork(network);
   debugLog('requestAccounts response', { origin: context.origin, network, accounts });
   respondSuccess(sendResponse, accounts);
 };
 
 const handleSignMessage = async (requestId, context, params, sendResponse) => {
-  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const network = await resolveRequestNetwork(context.origin, params);
   const message = typeof params?.message === 'string' ? params.message : '';
 
   if (!message) {
@@ -451,7 +483,7 @@ const handleSignMessage = async (requestId, context, params, sendResponse) => {
 };
 
 const handleSignPsbt = async (requestId, context, params, sendResponse) => {
-  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const network = await resolveRequestNetwork(context.origin, params);
   const psbtHex =
     typeof params?.psbtHex === 'string'
       ? params.psbtHex
@@ -479,7 +511,7 @@ const handleSignPsbt = async (requestId, context, params, sendResponse) => {
 };
 
 const handleSignTransaction = async (requestId, context, params, sendResponse) => {
-  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const network = await resolveRequestNetwork(context.origin, params);
   const transaction = params?.transaction || params?.txHex || params?.txToSign;
 
   if (!transaction) {
@@ -497,7 +529,7 @@ const handleSignTransaction = async (requestId, context, params, sendResponse) =
 };
 
 const handleAddMultisig = async (requestId, context, params, sendResponse) => {
-  const network = await resolveApprovedNetwork(context.origin, params?.network);
+  const network = await resolveRequestNetwork(context.origin, params);
   const m = Number(params?.m);
   const pubkeys = Array.isArray(params?.pubkeys) ? params.pubkeys : [];
 
@@ -555,6 +587,15 @@ const handleProviderRequest = async (message, sender, sendResponse) => {
   try {
     if (method === 'keepAlive') {
       respondSuccess(sendResponse, 'ok');
+      return true;
+    }
+
+    if (method === 'fetchUserIP') {
+      respondSuccess(sendResponse, {
+        ip: null,
+        isVpn: false,
+        countryCode: 'Unknown',
+      });
       return true;
     }
 

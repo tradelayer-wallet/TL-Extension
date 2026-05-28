@@ -7,6 +7,7 @@ const ALLOWED_METHODS = new Set([
   'signPSBT',
   'signTransaction',
   'addMultisig',
+  'fetchUserIP',
   'keepAlive',
 ]);
 const DEBUG = !!globalThis.__TRADELAYER_DEBUG__;
@@ -42,9 +43,47 @@ const postToPage = (type, data) => {
   );
 };
 
+const postLegacyResponse = (data) => {
+  const response = {
+    id: data?.id,
+    success: !!data?.success,
+    result: data?.result,
+    error: data?.error,
+  };
+
+  window.postMessage(
+    {
+      type: 'response',
+      data: {
+        ...response,
+        payload: response,
+      },
+    },
+    targetOrigin
+  );
+};
+
 const normalizeMethod = (method) => {
   if (method === 'signPSBT') return 'signPsbt';
   return method;
+};
+
+const sendProviderRequest = ({ id, method, params, legacy }, callback) => {
+  chrome.runtime.sendMessage(
+    {
+      channel: CHANNEL,
+      type: 'providerRequest',
+      data: {
+        id: String(id),
+        method: normalizeMethod(method),
+        params: {
+          ...(params || {}),
+          ...(legacy ? { __legacyBridge: true } : {}),
+        },
+      },
+    },
+    callback
+  );
 };
 
 window.addEventListener('message', (event) => {
@@ -53,6 +92,46 @@ window.addEventListener('message', (event) => {
   }
 
   const message = event.data;
+  const isLegacyRequest =
+    message &&
+    message.type === 'request' &&
+    message.channel !== CHANNEL &&
+    message.data &&
+    typeof message.data.method === 'string';
+
+  if (isLegacyRequest) {
+    const { id, method, params } = message.data || {};
+    debugLog('legacy request <- page', message.data);
+
+    if ((typeof id !== 'string' && typeof id !== 'number') || !ALLOWED_METHODS.has(method)) {
+      postLegacyResponse({
+        id,
+        success: false,
+        error: 'Invalid TradeLayer legacy provider request.',
+      });
+      return;
+    }
+
+    sendProviderRequest({ id, method, params, legacy: true }, (response) => {
+      if (chrome.runtime.lastError) {
+        postLegacyResponse({
+          id,
+          success: false,
+          error: chrome.runtime.lastError.message,
+        });
+        return;
+      }
+
+      postLegacyResponse({
+        id,
+        success: !!response?.success,
+        result: response?.result,
+        error: response?.error,
+      });
+    });
+    return;
+  }
+
   if (
     !message ||
     message.channel !== CHANNEL ||
@@ -63,7 +142,6 @@ window.addEventListener('message', (event) => {
   }
 
   const { id, method, params } = message.data || {};
-  const normalizedMethod = normalizeMethod(method);
   debugLog('request <- page', message.data);
   if (typeof id !== 'string' || !ALLOWED_METHODS.has(method)) {
     debugLog('rejecting request', { id, method });
@@ -75,32 +153,25 @@ window.addEventListener('message', (event) => {
     return;
   }
 
-  chrome.runtime.sendMessage(
-    {
-      channel: CHANNEL,
-      type: 'providerRequest',
-      data: { id, method: normalizedMethod, params: params || {} },
-    },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        debugLog('runtime error', chrome.runtime.lastError.message);
-        postToPage('response', {
-          id,
-          success: false,
-          error: chrome.runtime.lastError.message,
-        });
-        return;
-      }
-
-      debugLog('runtime response', response);
+  sendProviderRequest({ id, method, params, legacy: false }, (response) => {
+    if (chrome.runtime.lastError) {
+      debugLog('runtime error', chrome.runtime.lastError.message);
       postToPage('response', {
         id,
-        success: !!response?.success,
-        result: response?.result,
-        error: response?.error,
+        success: false,
+        error: chrome.runtime.lastError.message,
       });
+      return;
     }
-  );
+
+    debugLog('runtime response', response);
+    postToPage('response', {
+      id,
+      success: !!response?.success,
+      result: response?.result,
+      error: response?.error,
+    });
+  });
 });
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {

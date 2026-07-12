@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TradeLayer Provider Flow Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      background: #111827;
+      color: #e5e7eb;
+    }
+    button {
+      margin-right: 8px;
+      margin-bottom: 8px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 4px;
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+    pre {
+      margin-top: 16px;
+      padding: 12px;
+      background: #0b1220;
+      border: 1px solid #243041;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    code {
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <h1>TradeLayer Provider Flow Test</h1>
+  <p>This page mocks the content/background bridge and verifies that <code>requestAccounts()</code> resolves with accounts.</p>
+  <div>
+    <button id="connect">Connect</button>
+    <button id="request">Request Accounts</button>
+    <button id="requestDirect">Direct Request</button>
+    <button id="clear">Clear</button>
+  </div>
+  <pre id="log"></pre>
+
+  <script>
+    window.__TRADELAYER_DEBUG__ = true;
+  </script>
+  <script
+    type="module"
+    src="./window.js"
+    data-tradelayer-session-id="local-flow-test"
+    data-tradelayer-origin="http://127.0.0.1:4181"
+  ></script>
+  <script>
+    const CHANNEL = 'tradelayer-provider';
+    const SESSION_ID = 'local-flow-test';
+    const ORIGIN = window.location.origin;
+    const logEl = document.getElementById('log');
+    const accounts = [
+      {
+        address: 'tltc1qdummytestaddress0000000000000000000',
+        pubkey: '02d34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33fd34db33f'
+      }
+    ];
+
+    const log = (...args) => {
+      const line = args.map((item) => {
+        if (typeof item === 'string') return item;
+        try {
+          return JSON.stringify(item, null, 2);
+        } catch {
+          return String(item);
+        }
+      }).join(' ');
+      console.log(line);
+      logEl.textContent += line + '\n';
+    };
+
+    window.addEventListener('message', (event) => {
+      if (event.source !== window || event.origin !== ORIGIN) return;
+      const message = event.data;
+      if (!message || message.channel !== CHANNEL || message.sessionId !== SESSION_ID || message.type !== 'request') {
+        return;
+      }
+
+      const { id, method, params } = message.data || {};
+      log('[mock] request', { id, method, params });
+
+      if (method !== 'requestAccounts' && method !== 'connect') {
+        window.postMessage({
+          channel: CHANNEL,
+          sessionId: SESSION_ID,
+          type: 'response',
+          data: {
+            id,
+            success: false,
+            error: `Unsupported method: ${method}`,
+          }
+        }, ORIGIN);
+        return;
+      }
+
+      window.postMessage({
+        channel: CHANNEL,
+        sessionId: SESSION_ID,
+        type: 'response',
+        data: {
+          id,
+          success: true,
+          result: accounts,
+        }
+      }, ORIGIN);
+    });
+
+    const run = async (mode) => {
+      const provider = window.tradelayer;
+      if (!provider) {
+        log('[test] provider missing');
+        return;
+      }
+
+      try {
+        let result;
+        if (mode === 'connect') {
+          result = await provider.connect('LTCTEST');
+        } else if (mode === 'request') {
+          result = await provider.requestAccounts('LTCTEST');
+        } else {
+          result = await provider.request({
+            method: 'requestAccounts',
+            params: { network: 'LTCTEST' },
+          });
+        }
+
+        log('[test] resolved', result);
+      } catch (error) {
+        log('[test] error', error?.message || String(error));
+      }
+    };
+
+    document.getElementById('connect').addEventListener('click', () => run('connect'));
+    document.getElementById('request').addEventListener('click', () => run('request'));
+    document.getElementById('requestDirect').addEventListener('click', () => run('direct'));
+    document.getElementById('clear').addEventListener('click', () => { logEl.textContent = ''; });
+
+    log('[init] ready', { origin: ORIGIN, provider: !!window.tradelayer });
+
+    window.addEventListener('load', () => {
+      setTimeout(() => run('request'), 0);
+    });
+  </script>
+</body>
+</html>

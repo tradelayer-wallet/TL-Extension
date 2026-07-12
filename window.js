@@ -91,7 +91,7 @@ class TradeLayerProvider extends EventEmitter {
     debugLog('request -> page', payload);
 
     return new Promise((resolve, reject) => {
-      this.pendingRequests.set(id, { resolve, reject });
+      this.pendingRequests.set(id, { resolve, reject, method });
       window.postMessage(payload, this.targetOrigin);
     });
   }
@@ -131,7 +131,17 @@ class TradeLayerProvider extends EventEmitter {
       return;
     }
 
-    pending.resolve(data?.result);
+    const result =
+      data?.result ??
+      data?.accounts ??
+      data?.addresses ??
+      data?.payload?.result ??
+      data?.payload?.accounts ??
+      data?.payload?.addresses ??
+      data?.data ??
+      null;
+
+    pending.resolve(result);
   }
 
   handleEvent(data) {

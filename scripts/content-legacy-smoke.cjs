@@ -97,7 +97,9 @@ if (legacyRuntime.type !== 'providerRequest') fail('Legacy request used wrong ru
 if (legacyRuntime.data.id !== '7') fail(`Legacy id was not string-normalized: ${legacyRuntime.data.id}`);
 if (legacyRuntime.data.method !== 'requestAccounts') fail(`Wrong legacy method: ${legacyRuntime.data.method}`);
 if (legacyRuntime.data.params.network !== 'LTCTEST') fail('Legacy network param was not forwarded.');
-if (legacyRuntime.data.params.__legacyBridge !== true) fail('Legacy request was not marked as legacy.');
+if (legacyRuntime.data.params.__legacyBridge !== true) {
+  fail('Legacy request was not marked for compatibility network selection.');
+}
 
 const legacyResponse = postedMessages.find((item) => item.data?.type === 'response');
 if (!legacyResponse) fail('Legacy response was not posted.');

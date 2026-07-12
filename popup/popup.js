@@ -50,6 +50,8 @@ const normalizeWalletNetwork = (network) => {
   return value;
 };
 
+const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
+
 const inferWalletNetworkFromAddress = (address) => {
   if (typeof address !== 'string') return null;
   const value = address.trim().toLowerCase();
@@ -87,6 +89,7 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
         address: item.address,
         pubkey: item.pubkey || item.publicKey || null,
         network,
+        derivationPath: item.derivationPath || item.path || null,
       };
     })
     .filter(Boolean);
@@ -96,6 +99,62 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
     normalizedAccounts[0] ||
     null
   );
+};
+
+const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwork) => {
+  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
+    .map((item) => {
+      if (typeof item === 'string') {
+        return {
+          address: item,
+          pubkey: null,
+          network: normalizeWalletNetwork(
+            inferWalletNetworkFromAddress(item) || normalizedPreferred
+          ),
+        };
+      }
+
+      if (!item || typeof item.address !== 'string') return null;
+
+      return {
+        address: item.address,
+        pubkey: item.pubkey || item.publicKey || null,
+        network: normalizeWalletNetwork(
+          item.network ||
+          item.networkId ||
+          inferWalletNetworkFromAddress(item.address) ||
+          normalizedPreferred
+        ),
+      };
+    })
+    .filter(Boolean);
+
+  const activeEntries = Object.entries(activeAccounts || {})
+    .map(([network, address]) => ({
+      network: normalizeWalletNetwork(network),
+      address,
+    }))
+    .filter((entry) => typeof entry.address === 'string' && entry.address.length > 0);
+
+  const preferredActive =
+    activeEntries.find((entry) => entry.network === normalizedPreferred) ||
+    activeEntries[0] ||
+    null;
+
+  const selected =
+    (preferredActive &&
+      normalizedAccounts.find(
+        (item) => item.address === preferredActive.address
+      )) ||
+    normalizedAccounts.find((item) => item.network === normalizedPreferred) ||
+    normalizedAccounts[0] ||
+    null;
+
+  return {
+    account: selected,
+    network: selected?.network || preferredActive?.network || normalizedPreferred,
+  };
 };
 
 const App = () => {
@@ -255,10 +314,19 @@ const App = () => {
       dispatch(setStep(encryptedSeed ? 6 : 1));
     }
 
-    chrome.storage.local.get(['addresses'], (result) => {
-      const stored = pickStoredWalletAccount(result.addresses || [], network);
+    chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {
+      const selection = resolveStoredWalletSelection(
+        result.addresses || [],
+        result[ACTIVE_ACCOUNTS_KEY] || {},
+        network
+      );
+      const stored = selection.account;
       if (!stored?.address) {
         return;
+      }
+
+      if (selection.network && selection.network !== network) {
+        dispatch(setNetwork(selection.network));
       }
 
       dispatch(setAddress(stored.address));
@@ -270,6 +338,28 @@ const App = () => {
       }
     });
   }, [dispatch]);
+
+  useEffect(() => {
+    chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {
+      const selection = resolveStoredWalletSelection(
+        result.addresses || [],
+        result[ACTIVE_ACCOUNTS_KEY] || {},
+        network
+      );
+      const stored = selection.account;
+      if (!stored?.address) {
+        return;
+      }
+
+      dispatch(setAddress(stored.address));
+      if (stored.pubkey) {
+        dispatch(setPubKey(stored.pubkey));
+      }
+      if (selection.network && selection.network !== network) {
+        dispatch(setNetwork(selection.network));
+      }
+    });
+  }, [dispatch, network]);
 
   useEffect(() => {
     console.log('Current step after dispatch:', step);

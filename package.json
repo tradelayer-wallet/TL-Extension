@@ -14,6 +14,7 @@
     "@noble/hashes": "^1.6.1",
     "@noble/secp256k1": "^2.1.0",
     "@reduxjs/toolkit": "^2.3.0",
+    "axios": "^1.16.1",
     "bignumber.js": "^9.1.2",
     "bip32": "^5.0.0-rc.0",
     "bip39": "^3.1.0",
@@ -62,7 +63,13 @@
   },
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "node build.js --mode=release",
+    "build:release": "npm run build",
+    "build:dev": "node build.js --mode=development",
+    "test": "npm run test:smoke",
+    "test:smoke": "node scripts/provider-flow-smoke.cjs && node scripts/content-legacy-smoke.cjs && node scripts/background-permission-smoke.cjs && node scripts/release-build-smoke.cjs",
+    "package": "npm run test:smoke && npm run build:release",
+    "package:dev": "npm run test:smoke && npm run build:dev"
   },
   "description": ""
 }

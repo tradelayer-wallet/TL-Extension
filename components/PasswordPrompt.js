@@ -3,6 +3,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
 import { generateAddressFromSeed, clearPrivateKeyCaches } from '../lib/walletUtils';
 
+const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
+
 const PasswordPrompt = () => {
   const dispatch = useDispatch();
   const passwordRef = useRef('');
@@ -27,18 +29,29 @@ const PasswordPrompt = () => {
     try {
     let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 
-  chrome.storage.local.get(['addresses'], (result) => {
+  chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {
     let addresses = result.addresses || []; // Retrieve existing addresses array or initialize as empty
 
     // Check if the derived address already exists in the array
     const existingAddress = addresses.find((item) => item.address === addressData.address);
 
         if (!existingAddress) {
-          console.log('no existing address saving '+JSON.stringify({ address: addressData.address, pubkey: addressData.publicKey, network: selectedNetwork }))
+          console.log('no existing address saving '+JSON.stringify({ address: addressData.address, pubkey: addressData.publicKey, network: selectedNetwork, derivationPath: addressData.derivationPath }))
           // Add new address and pubkey if it doesn't already exist
-          addresses.push({ address: addressData.address, pubkey: addressData.publicKey, network: selectedNetwork });
+          addresses.push({
+            address: addressData.address,
+            pubkey: addressData.publicKey,
+            network: selectedNetwork,
+            derivationPath: addressData.derivationPath,
+          });
           // Save updated addresses array back to local storage
-          chrome.storage.local.set({ addresses }, () => {
+          chrome.storage.local.set({
+            addresses,
+            [ACTIVE_ACCOUNTS_KEY]: {
+              ...(result[ACTIVE_ACCOUNTS_KEY] || {}),
+              [selectedNetwork]: addressData.address,
+            },
+          }, () => {
             if (chrome.runtime.lastError) {
               console.error('Error saving addresses:', chrome.runtime.lastError);
             } else {
@@ -47,6 +60,22 @@ const PasswordPrompt = () => {
           });
         } else {
           console.log('Address already exists in storage:', existingAddress);
+          addresses = addresses.map((item) => {
+            if (item?.address !== addressData.address) return item;
+            return {
+              ...item,
+              pubkey: addressData.publicKey,
+              network: selectedNetwork,
+              derivationPath: addressData.derivationPath,
+            };
+          });
+          chrome.storage.local.set({
+            addresses,
+            [ACTIVE_ACCOUNTS_KEY]: {
+              ...(result[ACTIVE_ACCOUNTS_KEY] || {}),
+              [selectedNetwork]: addressData.address,
+            },
+          });
         }
 
         // Dispatch the address and pubkey to Redux

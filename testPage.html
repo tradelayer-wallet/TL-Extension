@@ -3,72 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Wallet Interaction Example</title>
+  <title>Wallet Debug</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #111827; color: #e5e7eb; }
+    button { margin-right: 8px; margin-bottom: 8px; padding: 10px 14px; border: 0; border-radius: 4px; background: #2563eb; color: #fff; cursor: pointer; }
+    pre { margin-top: 16px; padding: 12px; background: #0b1220; border: 1px solid #243041; border-radius: 4px; white-space: pre-wrap; word-break: break-word; }
+    code { color: #93c5fd; }
+  </style>
 </head>
 <body>
+  <h1>Wallet Debug</h1>
+  <p>This page reads the extension storage directly and prints the persisted wallet addresses.</p>
 
-  <h1>Wallet Interaction Example</h1>
-  <button id="connectWalletButton">Connect Wallet</button>
-  <p>Connected Address: <span id="connectedAddress">Not connected</span></p>
+  <button id="refreshStorage">Refresh Storage</button>
+  <button id="clearLog">Clear</button>
 
-  <button id="signMessageButton" disabled>Sign Message</button>
-  <p>Signed Message: <span id="signedMessage"></span></p>
+  <pre id="log"></pre>
 
   <script>
-    // Check if the wallet is available
-    if (window.myWallet) {
-      // Handle account changes
-      window.myWallet.on('accountsChanged', (accounts) => {
-        console.log('Accounts changed:', accounts);
-        document.getElementById('connectedAddress').innerText = accounts[0] || 'Not connected';
-        document.getElementById('signMessageButton').disabled = !accounts[0];
+    const logEl = document.getElementById('log');
+    const log = (...args) => {
+      const line = args.map((item) => {
+        if (typeof item === 'string') return item;
+        try {
+          return JSON.stringify(item, null, 2);
+        } catch {
+          return String(item);
+        }
+      }).join(' ');
+      console.log(line);
+      logEl.textContent += line + '\n';
+    };
+
+    const readStorage = async () => {
+      const chromeApi = globalThis.chrome;
+      const hasChromeStorage = !!chromeApi?.storage?.local;
+      const hasProvider = !!window.tradelayer;
+
+      log('[init]', {
+        hasChromeStorage,
+        hasProvider,
+        href: location.href,
       });
 
-      // Handle network changes
-      window.myWallet.on('networkChanged', (network) => {
-        console.log('Network changed:', network);
-      });
-    }
-
-    // Connect Wallet Button
-    document.getElementById('connectWalletButton').addEventListener('click', async () => {
-      console.log('window.myWallet:', window.myWallet);
-      if (window.myWallet) {
-        try {
-          const accounts = await window.myWallet.requestAccounts();
-          console.log('Connected accounts:', accounts);
-          document.getElementById('connectedAddress').innerText = accounts;
-          document.getElementById('signMessageButton').disabled = false;
-        } catch (error) {
-          console.error('Failed to connect wallet:', error);
-        }
-      } else {
-        alert('Wallet extension not detected');
+      if (!hasChromeStorage) {
+        log('[storage] chrome.storage.local is unavailable. Open this page as an extension page.');
+        return;
       }
+
+      const items = await chromeApi.storage.local.get(['addresses', 'multisigs', 'sitePermissionsV1']);
+      const encryptedSeed = localStorage.getItem('encryptedSeed');
+
+      log('[storage] encryptedSeed present', !!encryptedSeed);
+      log('[storage] addresses', items.addresses || []);
+      log('[storage] multisigs', items.multisigs || []);
+      log('[storage] sitePermissions', items.sitePermissionsV1 || {});
+
+      if (window.tradelayer) {
+        try {
+          const accounts = await window.tradelayer.requestAccounts('LTCTEST');
+          log('[provider] requestAccounts(LTCTEST)', accounts);
+        } catch (error) {
+          log('[provider] requestAccounts error', error?.message || String(error));
+        }
+      }
+    };
+
+    document.getElementById('refreshStorage').addEventListener('click', () => {
+      readStorage().catch((error) => log('[storage] read failed', error?.message || String(error)));
+    });
+    document.getElementById('clearLog').addEventListener('click', () => {
+      logEl.textContent = '';
     });
 
-    // Sign Message Button
-    document.getElementById('signMessageButton').addEventListener('click', async () => {
-      if (window.myWallet) {
-        try {
-          const message = "Hello, World!";
-          const signature = await window.myWallet.sendRequest('signMessage', { message });
-          console.log('Signed message:', signature);
-          document.getElementById('signedMessage').innerText = signature;
-        } catch (error) {
-          console.error('Failed to sign message:', error);
-        }
-      } else {
-        alert('Wallet extension not detected');
-      }
-    });
-
-    document.addEventListener('signResult', async (signature)=>{
-      document.getElementById('signedMessage').innerText = signature;
-    })
-
-    
-
+    readStorage().catch((error) => log('[storage] read failed', error?.message || String(error)));
   </script>
 </body>
 </html>

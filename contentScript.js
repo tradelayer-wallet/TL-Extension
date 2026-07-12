@@ -48,6 +48,7 @@ const postLegacyResponse = (data) => {
     id: data?.id,
     success: !!data?.success,
     result: data?.result,
+    accounts: data?.result,
     error: data?.error,
   };
 
@@ -56,7 +57,21 @@ const postLegacyResponse = (data) => {
       type: 'response',
       data: {
         ...response,
+        accounts: response.result,
         payload: response,
+      },
+    },
+    targetOrigin
+  );
+};
+
+const postLegacyBridgeReady = () => {
+  window.postMessage(
+    {
+      type: 'tradelayerBridgeReady',
+      data: {
+        providerId: 'tradelayer',
+        sessionId,
       },
     },
     targetOrigin
@@ -98,6 +113,11 @@ window.addEventListener('message', (event) => {
     message.channel !== CHANNEL &&
     message.data &&
     typeof message.data.method === 'string';
+
+  if (message?.type === 'tradelayerBridgePing') {
+    postLegacyBridgeReady();
+    return;
+  }
 
   if (isLegacyRequest) {
     const { id, method, params } = message.data || {};
@@ -169,10 +189,13 @@ window.addEventListener('message', (event) => {
       id,
       success: !!response?.success,
       result: response?.result,
+      accounts: response?.result,
       error: response?.error,
     });
   });
 });
+
+postLegacyBridgeReady();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.channel !== CHANNEL || message?.type !== 'providerEvent') {

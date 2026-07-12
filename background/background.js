@@ -1,5 +1,13 @@
 const CHANNEL = 'tradelayer-provider';
 const SITE_PERMISSIONS_KEY = 'sitePermissionsV1';
+const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
+const APPROVED_HTTPS_ORIGINS = new Set([
+  'https://layerwallet.com',
+  'https://www.layerwallet.com',
+  'https://testnet.layerwallet.com',
+]);
+// The development package generator changes this in its staged copy only.
+const ALLOW_DEVELOPMENT_ORIGINS = false;
 const PAGE_METHODS = new Set([
   'connect',
   'requestAccounts',
@@ -106,12 +114,14 @@ const isAllowedOrigin = (origin) => {
 
   try {
     const url = new URL(origin);
-    if (url.protocol !== 'https:') return false;
-    return (
-      url.hostname === 'layerwallet.com' ||
-      url.hostname === 'www.layerwallet.com' ||
-      url.hostname.endsWith('.layerwallet.com')
-    );
+    if (ALLOW_DEVELOPMENT_ORIGINS &&
+      url.protocol === 'http:' &&
+      (url.hostname === 'localhost' || url.hostname === '127.0.0.1')
+    ) {
+      return true;
+    }
+
+    return url.protocol === 'https:' && APPROVED_HTTPS_ORIGINS.has(url.origin);
   } catch {
     return false;
   }
@@ -150,7 +160,7 @@ const respondError = (sendResponse, error) => {
   const message =
     typeof error === 'string'
       ? error
-      : error instanceof Error
+      : typeof error?.message === 'string'
         ? error.message
         : 'Unknown extension error';
 
@@ -215,6 +225,7 @@ const normalizeStoredAddressRecord = (item) => {
     address: item.address,
     pubkey: item.pubkey || item.publicKey || null,
     network,
+    derivationPath: item.derivationPath || item.path || null,
   };
 };
 
@@ -251,13 +262,25 @@ const resolveApprovedNetwork = async (origin, network) => {
 
 const getAddressesForNetwork = async (network) => {
   const normalized = normalizeNetworkId(network);
-  const { addresses = [] } = await storageGet(['addresses']);
+  const { addresses = [], [ACTIVE_ACCOUNTS_KEY]: activeAccounts = {} } = await storageGet([
+    'addresses',
+    ACTIVE_ACCOUNTS_KEY,
+  ]);
   const filtered = (addresses || [])
     .map(normalizeStoredAddressRecord)
     .filter((item) => item && item.network === normalized);
 
   if (!filtered.length) {
     throw new Error(`No ${normalized} address is available in wallet storage.`);
+  }
+
+  const activeAddress = activeAccounts?.[normalized];
+  if (activeAddress) {
+    const activeIndex = filtered.findIndex((item) => item.address === activeAddress);
+    if (activeIndex > 0) {
+      const [active] = filtered.splice(activeIndex, 1);
+      filtered.unshift(active);
+    }
   }
 
   return filtered;
@@ -287,11 +310,11 @@ const getPreferredLegacyNetwork = async (network) => {
 };
 
 const resolveRequestNetwork = async (origin, params) => {
-  if (params?.__legacyBridge) {
-    return getPreferredLegacyNetwork(params?.network);
-  }
+  const network = params?.__legacyBridge
+    ? await getPreferredLegacyNetwork(params?.network)
+    : params?.network;
 
-  return resolveApprovedNetwork(origin, params?.network);
+  return resolveApprovedNetwork(origin, network);
 };
 
 const getExistingMultisig = async (m, pubkeys, network) => {

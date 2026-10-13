@@ -3,10 +3,9 @@ import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
 import { clearPrivateKeyCaches } from '../lib/walletUtils';
 import {
-  encryptWithPassword,
   decryptWithPasswordInfo,
   checkNewPasswordPolicy,
-  backupStoredBlobOnce,
+  replaceStoredBlob,
   PLAINTEXT_KIND,
 } from '../lib/secureVault';
 
@@ -59,14 +58,11 @@ const ResetPassword = () => {
         return;
       }
 
-      // Re-encrypt the seed phrase with the new password (v2 vault format)
-      const encryptedSeedWithNewPassword = await encryptWithPassword(decrypted, newPassword);
+      // Re-encrypt the seed under the new password. replaceStoredBlob keeps
+      // the old ciphertext as a backup and only keeps the new one once it
+      // decrypts back; it throws if the stored seed changed meanwhile.
+      await replaceStoredBlob('encryptedSeed', encryptedSeed, decrypted, newPassword, PLAINTEXT_KIND.SEED);
       decrypted = null;
-
-      // One-time backup of the previous ciphertext, then save the new
-      // encrypted seed to localStorage
-      backupStoredBlobOnce('encryptedSeed', encryptedSeed);
-      localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);
       clearPrivateKeyCaches();
 
       // Clear password refs

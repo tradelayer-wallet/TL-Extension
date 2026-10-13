@@ -31,7 +31,7 @@ const ExposeSeed = () => {
       const { plaintext, legacy } = await decryptWithPasswordInfo(encryptedSeed, password, PLAINTEXT_KIND.SEED);
       if (legacy) {
         // Transparent migration: upgrade legacy blobs to the v2 vault format
-        // (validated above; keeps a one-time .bak of the old ciphertext).
+        // (validated above; the old ciphertext is kept as a backup).
         await maybeUpgradeStoredBlob('encryptedSeed', encryptedSeed, plaintext, password, PLAINTEXT_KIND.SEED);
       }
       setDecryptedSeedPhrase(plaintext); // Set the decrypted seed phrase

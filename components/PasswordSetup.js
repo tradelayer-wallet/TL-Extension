@@ -4,9 +4,9 @@ import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you hav
 import { setStep } from '../store/store';
 import { clearPrivateKeyCaches } from '../lib/walletUtils';
 import {
-  encryptWithPassword,
   decryptWithPasswordInfo,
   checkNewPasswordPolicy,
+  replaceStoredBlob,
   PLAINTEXT_KIND,
 } from '../lib/secureVault';
 
@@ -27,8 +27,8 @@ const PasswordSetup = () => {
         return;
       }
       setConfirmationPasswordValue('')    
-      let encryptedSeed = localStorage.getItem('encryptedSeed');
-      
+      const encryptedSeed = localStorage.getItem('encryptedSeed');
+
       // If there's no encrypted seed, encrypt the seedPhrase and store it
       if (!encryptedSeed || encryptedSeed.length === 0) {
         if (!seedPhrase || seedPhrase.length === 0) {
@@ -44,23 +44,25 @@ const PasswordSetup = () => {
           return;
         }
 
-        // Encrypt the seedPhrase and store it in localStorage (v2 vault format)
-        encryptedSeed = await encryptWithPassword(seedPhrase, password);
-        localStorage.setItem('encryptedSeed', encryptedSeed);  // Store the encrypted seed in localStorage
+        // Store the seed as a v2 vault blob. replaceStoredBlob only keeps it
+        // after it decrypts back to the seed phrase under this password.
+        await replaceStoredBlob('encryptedSeed', null, seedPhrase, password, PLAINTEXT_KIND.SEED);
         clearPrivateKeyCaches();
+      } else {
+        // An existing seed: the password must open it (the plaintext must be a
+        // valid BIP39 mnemonic).
+        try {
+          await decryptWithPasswordInfo(encryptedSeed, password, PLAINTEXT_KIND.SEED);
+        } catch (error) {
+          setPasswordValue('')
+          alert('Incorrect password. Please try again.');
+          return;
+        }
       }
 
-      // Verify the password by decrypting the stored seed (throws on mismatch;
-      // the plaintext must be a valid BIP39 mnemonic)
-      try {
-        await decryptWithPasswordInfo(encryptedSeed, password, PLAINTEXT_KIND.SEED);
-        setPasswordValue('')
-        dispatch(setSeedPhrase(null));
-        dispatch(setStep(6)); // Proceed to Step 6 (Password prompt) after successful decryption
-      } catch (error) {
-        setPasswordValue('')
-        alert('Incorrect password. Please try again.');
-      }
+      setPasswordValue('')
+      dispatch(setSeedPhrase(null));
+      dispatch(setStep(6)); // Proceed to Step 6 (Password prompt)
     } catch (error) {
       // Surface unexpected failures instead of leaving an unhandled rejection.
       console.error('Password setup failed:', error);

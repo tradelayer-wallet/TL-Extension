@@ -19,3 +19,20 @@
 
 4. **You're Ready to Use the Extension!**
    - The wallet extension is now installed and ready to use.
+
+## Recovering the seed from its backup
+
+Changing the password, or the one-time upgrade of an older wallet, keeps the
+previous encrypted seed in `localStorage` under `encryptedSeed.bak` (the
+first blob ever replaced) and `encryptedSeed.prev` (the most recently replaced
+one). If the current seed stops opening, restore the backup from the popup's
+devtools console (right-click the popup, Inspect, Console):
+
+```js
+await restoreSeedFromBackup('the password that opened the backup')
+```
+
+The backup is only written over the current seed after it decrypts with that
+password, and the blob it replaces is kept in `encryptedSeed.prev`. For a
+wallet that never had a password, pass `''`. Then reopen the popup and unlock
+with the same password.

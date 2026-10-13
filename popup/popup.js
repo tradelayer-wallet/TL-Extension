@@ -22,6 +22,7 @@ import ResetPass from '../components/ResetPass';
 import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
+import { restoreFromBackup } from '../lib/secureVault';
 import {
   setAddress,
   setApprovalRequest,
@@ -37,6 +38,11 @@ import {
   setStep,
   setTxToSign,
 } from '../store/store';
+
+// Recovery helper, documented in README.md: run in the popup's devtools console
+// with the password that opened the backup. Restores encryptedSeed from its
+// one-time .bak after verifying it, and keeps the displaced blob in .prev.
+window.restoreSeedFromBackup = (password) => restoreFromBackup('encryptedSeed', password);
 
 const normalizeWalletNetwork = (network) => {
   const value = String(network || 'LTC').trim().toUpperCase();

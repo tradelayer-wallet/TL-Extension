@@ -1,6 +1,7 @@
 // Sanity smoke test for lib/secureVault.js (runs offline under plain Node):
 //   - v2 vault (PBKDF2-SHA256 600k + AES-256-GCM) round-trip and format checks
-//   - v2 parameter hardening: KDF-downgrade / DoS iteration counts rejected
+//   - v2 parameter hardening: only PBKDF2_ITERATIONS is accepted, so KDF
+//     downgrade / DoS iteration counts are rejected before any derivation
 //   - legacy CryptoJS blob detection + decrypt fallback (transparent migration)
 //   - legacy plaintext validation: wrong-password garbage must never be
 //     accepted nor migrated over the real ciphertext (seed-loss fix)
@@ -160,13 +161,13 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
     );
     assert.ok(Date.now() - dosStart < 500, 'a 10M-iteration KDF must never be run');
 
-    // Documented tolerance: in-band iteration counts still decrypt (400k is
-    // written by no current build but admitted by the [100k, 1M] band).
-    const tolerantBlob = await buildEnvelopeWithIter(plaintext, 'pw-1', 400000);
-    assert.equal(
-      await decryptWithPasswordInfo(tolerantBlob, 'pw-1', PLAINTEXT_KIND.SEED).then((r) => r.plaintext),
-      plaintext,
-      'in-band iteration counts must remain readable'
+    // Exact-match policy: no build ever wrote any count but PBKDF2_ITERATIONS,
+    // so even an in-band count (400k) is rejected rather than tolerated.
+    const inBandBlob = await buildEnvelopeWithIter(plaintext, 'pw-1', 400000);
+    await assert.rejects(
+      () => decryptWithPasswordInfo(inBandBlob, 'pw-1', PLAINTEXT_KIND.SEED),
+      /unsupported vault parameters/,
+      'iter: 400000 (not PBKDF2_ITERATIONS) must be rejected'
     );
 
     // --- plaintext-shape validators (fix 1 foundation) ---
@@ -182,6 +183,16 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
     assert.equal(validatePrivateKeyPlaintext('!!! not base64 !!!'), false);
     assert.equal(validatePrivateKeyPlaintext(Buffer.alloc(32, 7).toString('hex')), false);
     assert.equal(validatePrivateKeyPlaintext(plaintext), false, 'mnemonics are not key caches');
+    // Same 32 bytes, but the final character carries non-zero pad bits: not
+    // the canonical encoding, so it must be rejected.
+    const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const nonCanonicalKeyB64 = keyB64.slice(0, 42) + alphabet[alphabet.indexOf(keyB64[42]) | 1] + '=';
+    assert.equal(
+      Buffer.from(nonCanonicalKeyB64, 'base64').equals(Buffer.from(keyB64, 'base64')),
+      true,
+      'fixture must decode to the same 32 bytes'
+    );
+    assert.equal(validatePrivateKeyPlaintext(nonCanonicalKeyB64), false, 'non-canonical base64 must be rejected');
 
     // --- new-password policy (fix 5) ---
     assert.equal(checkNewPasswordPolicy('long enough password'), null);

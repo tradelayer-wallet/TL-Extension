@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
 import { generateAddressFromSeed, clearPrivateKeyCaches } from '../lib/walletUtils';
+import { isLegacyVaultBlob } from '../lib/secureVault';
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
 
@@ -21,7 +22,10 @@ const PasswordPrompt = () => {
     let password = passwordRef.current.value;
     passwordRef.current.value = '';
     const encryptedSeed = localStorage.getItem('encryptedSeed');
-    if (!password) {
+    // An empty password is only accepted for legacy CryptoJS blobs: the
+    // pre-PR setup flow allowed empty passwords, and those users must be able
+    // to unlock (and then set a real password). v2 blobs can never have one.
+    if (!password && !isLegacyVaultBlob(encryptedSeed)) {
       alert('Please enter a password');
       return;
     }
@@ -83,9 +87,13 @@ const PasswordPrompt = () => {
         dispatch(setPubKey(addressData.publicKey));
         password=''
         // Encrypt and store the private key in local storage for later use
+        // (empty-password legacy wallets have no cacheable key blob yet —
+        // one is written after they set a password)
         clearPrivateKeyCaches();
         const encryptedKey = addressData.privateKey
-        localStorage.setItem('encryptedKey', encryptedKey);
+        if (encryptedKey) {
+          localStorage.setItem('encryptedKey', encryptedKey);
+        }
         addressData = null
           // Proceed to step 7
           dispatch(setStep(7));

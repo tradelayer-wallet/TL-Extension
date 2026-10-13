@@ -2,7 +2,13 @@ import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
 import { clearPrivateKeyCaches } from '../lib/walletUtils';
-import { encryptWithPassword, decryptWithPasswordInfo } from '../lib/secureVault';
+import {
+  encryptWithPassword,
+  decryptWithPasswordInfo,
+  checkNewPasswordPolicy,
+  backupStoredBlobOnce,
+  PLAINTEXT_KIND,
+} from '../lib/secureVault';
 
 const ResetPassword = () => {
   const dispatch = useDispatch();
@@ -13,49 +19,67 @@ const ResetPassword = () => {
   const confirmNewPasswordRef = useRef('');
 
   const handlePasswordReset = async () => {
-    const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
-
-    if (!encryptedSeed) {
-      alert('Encrypted seed not found.');
-      return;
-    }
-
-    // Get current, new, and confirm new passwords from refs
-    const currentPassword = currentPasswordRef.current.value;
-    const newPassword = newPasswordRef.current.value;
-    const confirmNewPassword = confirmNewPasswordRef.current.value;
-
-    // Check if new passwords match
-    if (newPassword !== confirmNewPassword) {
-      alert('New passwords do not match.');
-      return;
-    }
-
-    // Decrypt the seed phrase using the current password (throws on mismatch;
-    // accepts both v2 vault blobs and legacy CryptoJS blobs)
-    let decrypted;
     try {
-      const info = await decryptWithPasswordInfo(encryptedSeed, currentPassword);
-      decrypted = info.plaintext;
+      const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
+
+      if (!encryptedSeed) {
+        alert('Encrypted seed not found.');
+        return;
+      }
+
+      // Get current, new, and confirm new passwords from refs
+      const currentPassword = currentPasswordRef.current.value;
+      const newPassword = newPasswordRef.current.value;
+      const confirmNewPassword = confirmNewPasswordRef.current.value;
+
+      // Check if new passwords match
+      if (newPassword !== confirmNewPassword) {
+        alert('New passwords do not match.');
+        return;
+      }
+
+      // Minimal policy for the NEW password (the current one is only verified,
+      // never re-checked against the policy — legacy empty/short passwords must
+      // stay usable here so their owners can upgrade).
+      const policyError = checkNewPasswordPolicy(newPassword);
+      if (policyError) {
+        alert(`Choose a stronger new password: ${policyError}`);
+        return;
+      }
+
+      // Decrypt the seed phrase using the current password (throws on mismatch;
+      // the plaintext must be a valid BIP39 mnemonic — accepts both v2 vault
+      // blobs and legacy CryptoJS blobs)
+      let decrypted;
+      try {
+        const info = await decryptWithPasswordInfo(encryptedSeed, currentPassword, PLAINTEXT_KIND.SEED);
+        decrypted = info.plaintext;
+      } catch (error) {
+        alert('Incorrect current password. Please try again.');
+        return;
+      }
+
+      // Re-encrypt the seed phrase with the new password (v2 vault format)
+      const encryptedSeedWithNewPassword = await encryptWithPassword(decrypted, newPassword);
+      decrypted = null;
+
+      // One-time backup of the previous ciphertext, then save the new
+      // encrypted seed to localStorage
+      backupStoredBlobOnce('encryptedSeed', encryptedSeed);
+      localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);
+      clearPrivateKeyCaches();
+
+      // Clear password refs
+      currentPasswordRef.current.value = '';
+      newPasswordRef.current.value = '';
+      confirmNewPasswordRef.current.value = '';
+
+      alert('Password has been reset successfully!');
     } catch (error) {
-      alert('Incorrect current password. Please try again.');
-      return;
+      // Surface unexpected failures instead of leaving an unhandled rejection.
+      console.error('Password reset failed:', error);
+      alert(`Unable to reset the password: ${error?.message || error}`);
     }
-
-    // Re-encrypt the seed phrase with the new password (v2 vault format)
-    const encryptedSeedWithNewPassword = await encryptWithPassword(decrypted, newPassword);
-    decrypted = null;
-
-    // Save the new encrypted seed to localStorage
-    localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);
-    clearPrivateKeyCaches();
-
-    // Clear password refs
-    currentPasswordRef.current.value = '';
-    newPasswordRef.current.value = '';
-    confirmNewPasswordRef.current.value = '';
-
-    alert('Password has been reset successfully!');
   };
 
   const handleBack = () => {

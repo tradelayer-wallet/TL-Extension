@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep } from '../store/store'; // Import the setStep action
-import { decryptWithPasswordInfo, maybeUpgradeStoredBlob } from '../lib/secureVault';
+import { decryptWithPasswordInfo, maybeUpgradeStoredBlob, PLAINTEXT_KIND } from '../lib/secureVault';
 
 const ExposeSeed = () => {
   const dispatch = useDispatch();
@@ -25,12 +25,14 @@ const ExposeSeed = () => {
     }
 
     // Decrypt the seed phrase using the password (throws on wrong password;
-    // accepts both v2 vault blobs and legacy CryptoJS blobs)
+    // accepts both v2 vault blobs and legacy CryptoJS blobs — legacy decryps
+    // are only accepted when the plaintext is a valid BIP39 mnemonic)
     try {
-      const { plaintext, legacy } = await decryptWithPasswordInfo(encryptedSeed, password);
+      const { plaintext, legacy } = await decryptWithPasswordInfo(encryptedSeed, password, PLAINTEXT_KIND.SEED);
       if (legacy) {
-        // Transparent migration: upgrade legacy blobs to the v2 vault format.
-        await maybeUpgradeStoredBlob('encryptedSeed', encryptedSeed, plaintext, password);
+        // Transparent migration: upgrade legacy blobs to the v2 vault format
+        // (validated above; keeps a one-time .bak of the old ciphertext).
+        await maybeUpgradeStoredBlob('encryptedSeed', encryptedSeed, plaintext, password, PLAINTEXT_KIND.SEED);
       }
       setDecryptedSeedPhrase(plaintext); // Set the decrypted seed phrase
       passwordRef.current.value = ''; // Clear password from ref

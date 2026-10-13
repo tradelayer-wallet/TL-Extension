@@ -51,7 +51,7 @@ const SignTransaction = () => {
 
     try {
       if (messageToSign) {
-        const signedMessage = await signMessage(messageToSign, password);
+        const signedMessage = await signMessage(messageToSign, password, network);
         await chrome.runtime.sendMessage({
           method: 'signMessageResponse',
           payload: {

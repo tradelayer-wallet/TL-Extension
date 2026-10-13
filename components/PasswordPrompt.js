@@ -17,7 +17,7 @@ const PasswordPrompt = () => {
     { id: 'DOGETEST', name: 'Dogecoin Testnet', logo: '../images/tdoge.png' },
   ];
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = async () => {
     let password = passwordRef.current.value;
     passwordRef.current.value = '';
     const encryptedSeed = localStorage.getItem('encryptedSeed');
@@ -27,7 +27,7 @@ const PasswordPrompt = () => {
     }
     if(!selectedNetwork){selectedNetwork="LTC"}
     try {
-    let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
+    let addressData = await generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 
   chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {
     let addresses = result.addresses || []; // Retrieve existing addresses array or initialize as empty

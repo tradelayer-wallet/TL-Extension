@@ -1,8 +1,8 @@
 import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
-import CryptoJS from 'crypto-js'; // Import CryptoJS for decryption and encryption
 import { clearPrivateKeyCaches } from '../lib/walletUtils';
+import { encryptWithPassword, decryptWithPasswordInfo } from '../lib/secureVault';
 
 const ResetPassword = () => {
   const dispatch = useDispatch();
@@ -12,7 +12,7 @@ const ResetPassword = () => {
   const newPasswordRef = useRef('');
   const confirmNewPasswordRef = useRef('');
 
-  const handlePasswordReset = () => {
+  const handlePasswordReset = async () => {
     const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
 
     if (!encryptedSeed) {
@@ -31,17 +31,20 @@ const ResetPassword = () => {
       return;
     }
 
-    // Decrypt the seed phrase using the current password
-    const bytes = CryptoJS.AES.decrypt(encryptedSeed, currentPassword);
-    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-
-    if (!decrypted) {
+    // Decrypt the seed phrase using the current password (throws on mismatch;
+    // accepts both v2 vault blobs and legacy CryptoJS blobs)
+    let decrypted;
+    try {
+      const info = await decryptWithPasswordInfo(encryptedSeed, currentPassword);
+      decrypted = info.plaintext;
+    } catch (error) {
       alert('Incorrect current password. Please try again.');
       return;
     }
 
-    // Encrypt the seed phrase with the new password
-    const encryptedSeedWithNewPassword = CryptoJS.AES.encrypt(decrypted, newPassword).toString();
+    // Re-encrypt the seed phrase with the new password (v2 vault format)
+    const encryptedSeedWithNewPassword = await encryptWithPassword(decrypted, newPassword);
+    decrypted = null;
 
     // Save the new encrypted seed to localStorage
     localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);

@@ -22,7 +22,7 @@ const Send = () => {
       const encryptedSeed = localStorage.getItem('encryptedSeed');
       if (!encryptedSeed) return false;
       console.log('Checking password for network:', network);
-      return await checkPasswordMatch(encryptedSeed, password, network, fromAddress);
+      return await checkPasswordMatch(password, network, fromAddress);
     } catch (error) {
       console.error('Error in password check:', error);
       return false;

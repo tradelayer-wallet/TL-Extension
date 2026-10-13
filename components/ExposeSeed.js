@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep } from '../store/store'; // Import the setStep action
-import CryptoJS from 'crypto-js'; // Import CryptoJS for decryption
+import { decryptWithPasswordInfo, maybeUpgradeStoredBlob } from '../lib/secureVault';
 
 const ExposeSeed = () => {
   const dispatch = useDispatch();
@@ -15,7 +15,7 @@ const ExposeSeed = () => {
     if (passwordRef.current) passwordRef.current.value = '';
   }, []);
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = async () => {
     const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
     const password = passwordRef.current.value; // Correct way to get password value
 
@@ -24,14 +24,17 @@ const ExposeSeed = () => {
       return;
     }
 
-    // Decrypt the seed phrase using the password
-    const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
-    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-
-    if (decrypted) {
-      setDecryptedSeedPhrase(decrypted); // Set the decrypted seed phrase
+    // Decrypt the seed phrase using the password (throws on wrong password;
+    // accepts both v2 vault blobs and legacy CryptoJS blobs)
+    try {
+      const { plaintext, legacy } = await decryptWithPasswordInfo(encryptedSeed, password);
+      if (legacy) {
+        // Transparent migration: upgrade legacy blobs to the v2 vault format.
+        await maybeUpgradeStoredBlob('encryptedSeed', encryptedSeed, plaintext, password);
+      }
+      setDecryptedSeedPhrase(plaintext); // Set the decrypted seed phrase
       passwordRef.current.value = ''; // Clear password from ref
-    } else {
+    } catch (error) {
       alert('Incorrect password. Please try again.');
     }
   };

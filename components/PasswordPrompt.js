@@ -86,14 +86,10 @@ const PasswordPrompt = () => {
         dispatch(setAddress(addressData.address));
         dispatch(setPubKey(addressData.publicKey));
         password=''
-        // Encrypt and store the private key in local storage for later use
-        // (empty-password legacy wallets have no cacheable key blob yet —
-        // one is written after they set a password)
+        // Drop cached keys from an earlier session (including the legacy
+        // 'encryptedKey' entry). Signing derives and caches the key on demand
+        // through the vault write path, so nothing is written here.
         clearPrivateKeyCaches();
-        const encryptedKey = addressData.privateKey
-        if (encryptedKey) {
-          localStorage.setItem('encryptedKey', encryptedKey);
-        }
         addressData = null
           // Proceed to step 7
           dispatch(setStep(7));

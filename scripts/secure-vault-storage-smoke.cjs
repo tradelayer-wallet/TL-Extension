@@ -6,7 +6,10 @@
 //     intact, both in the live key and in the backup slots
 //   - password changes keep the displaced blob; stale writers are refused
 //   - restoreFromBackup verifies the backup before writing and keeps what it
-//     displaces
+//     displaces; it can recover from the .bak or the .prev slot
+//   - a completed write leaves no displaced copy behind (.prev is dropped)
+//   - derived key caches are never backed up
+//   - the only localStorage writes outside lib/secureVault.js are non-vault keys
 //   - the key-cache sweep removes key caches but never their backups
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -20,14 +23,16 @@ const SEED = 'legal winner thank year wave sausage worth useful legal winner tha
 const OLD_PASSWORD = 'old password';
 const SEED_KIND = 'seed';
 
-// Minimal localStorage with a hook that runs right after every setItem, so a
-// test can make another page's write land at an exact point in our sequence.
+// Minimal localStorage with hooks around every setItem: beforeSet can throw to
+// simulate an interruption before a write lands, afterSet runs once it has
+// landed, so a test can make another page's write land at an exact point.
 const makeStorage = () => {
   const map = new Map();
-  const hooks = { afterSet: null };
+  const hooks = { beforeSet: null, afterSet: null };
   const store = {
     getItem: (key) => (map.has(key) ? map.get(key) : null),
     setItem: (key, value) => {
+      if (hooks.beforeSet) hooks.beforeSet(key, String(value));
       map.set(key, String(value));
       if (hooks.afterSet) hooks.afterSet(key, String(value));
     },
@@ -122,7 +127,7 @@ const makeStorage = () => {
       );
       assert.equal(map.get('encryptedSeed'), legacySeed, 'prior blob must be restored byte-for-byte');
       assert.equal(map.get('encryptedSeed.bak'), legacySeed, 'one-time backup holds the prior blob');
-      assert.equal(map.get('encryptedSeed.prev'), legacySeed, 'displaced blob kept in .prev');
+      assert.equal(map.has('encryptedSeed.prev'), false, 'a completed rollback leaves no displaced copy behind');
     }
 
     // --- 3. password change keeps the displaced blob; stale writers refused ---
@@ -134,7 +139,7 @@ const makeStorage = () => {
       const reset = await vault.replaceStoredBlob('encryptedSeed', upgraded, SEED, 'brand new password', SEED_KIND);
       assert.equal(map.get('encryptedSeed'), reset);
       assert.equal(map.get('encryptedSeed.bak'), legacySeed, '.bak stays the first blob ever displaced');
-      assert.equal(map.get('encryptedSeed.prev'), upgraded, '.prev holds the blob this reset displaced');
+      assert.equal(map.has('encryptedSeed.prev'), false, 'a verified reset drops the displaced blob (no old-password copy kept)');
       assert.equal(await vault.decryptWithPassword(reset, 'brand new password', SEED_KIND), SEED);
 
       // A writer that validated against the pre-reset blob must not overwrite the reset.
@@ -185,6 +190,185 @@ const makeStorage = () => {
       assert.equal(await vault.restoreFromBackup('encryptedSeed', OLD_PASSWORD), null, 'no backup, nothing to restore');
     }
 
+    // --- 4b. an interrupted write is recoverable from .prev ---
+    {
+      const { map, hooks } = useStorage();
+      const priorBlob = await vault.encryptWithPassword(SEED, 'pw-prior-1');
+      map.set('encryptedSeed', priorBlob);
+      map.set('encryptedSeed.bak', legacySeed);
+      // The verify step of the new write fails, and the rollback write is
+      // interrupted before it lands (a crash or quota error at that point).
+      const subtle = globalThis.crypto.subtle;
+      subtle.decrypt = async () => {
+        delete subtle.decrypt;
+        throw new Error('injected verify failure');
+      };
+      hooks.beforeSet = (key, value) => {
+        if (key === 'encryptedSeed' && value === priorBlob) {
+          hooks.beforeSet = null;
+          throw new Error('interrupted before the rollback landed');
+        }
+      };
+      await assert.rejects(
+        () => vault.replaceStoredBlob('encryptedSeed', priorBlob, SEED, 'pw-new-2', SEED_KIND),
+        /interrupted before the rollback landed/
+      );
+      const unverified = map.get('encryptedSeed');
+      assert.notEqual(unverified, priorBlob, 'the interrupted write left the new blob in the live key');
+      assert.equal(map.get('encryptedSeed.prev'), priorBlob, 'the displaced blob is kept in .prev for recovery');
+
+      // The .bak slot holds an older password, so it cannot restore this seed.
+      await assert.rejects(
+        () => vault.restoreFromBackup('encryptedSeed', 'pw-prior-1', SEED_KIND, 'bak'),
+        /Failed to decrypt/
+      );
+      assert.equal(map.get('encryptedSeed'), unverified, 'a failed restore changes nothing');
+
+      assert.equal(
+        await vault.restoreFromBackup('encryptedSeed', 'pw-prior-1', SEED_KIND, 'prev'),
+        priorBlob,
+        'restore must be able to recover from .prev'
+      );
+      assert.equal(map.get('encryptedSeed'), priorBlob);
+      // .prev already held the good copy that is now live. The unverified value
+      // that was live is not allowed to replace it.
+      assert.equal(map.get('encryptedSeed.prev'), priorBlob, 'the restore keeps the existing recovery copy in .prev');
+      assert.equal(await vault.decryptWithPassword(map.get('encryptedSeed'), 'pw-prior-1', SEED_KIND), SEED);
+
+      await assert.rejects(
+        () => vault.restoreFromBackup('encryptedSeed', 'pw-prior-1', SEED_KIND, 'main'),
+        /Unknown backup slot/
+      );
+      await assert.rejects(
+        () => vault.restoreFromBackup('encryptedPrivateKey:LTC:m_44_2_0_0_0', 'pw-prior-1', SEED_KIND, 'bak'),
+        /Only the seed/
+      );
+      hooks.beforeSet = null;
+    }
+
+    // --- 4c. a failed cleanup of .prev never turns a verified write into a failure ---
+    {
+      const { map } = useStorage();
+      map.set('encryptedSeed', legacySeed);
+      const store = globalThis.localStorage;
+      const realRemove = store.removeItem;
+      store.removeItem = (key) => {
+        if (key === 'encryptedSeed.prev') throw new Error('quota: cleanup failed');
+        realRemove(key);
+      };
+      try {
+        const reset = await vault.replaceStoredBlob('encryptedSeed', legacySeed, SEED, 'pw-cleanup-3', SEED_KIND);
+        assert.equal(map.get('encryptedSeed'), reset, 'the verified write must stand');
+        assert.equal(await vault.decryptWithPassword(reset, 'pw-cleanup-3', SEED_KIND), SEED);
+      } finally {
+        store.removeItem = realRemove;
+      }
+    }
+
+    // --- 4d. derived key caches are re-derivable, so they never get backups ---
+    const cacheKey = 'encryptedPrivateKey:LTC:m_44_2_0_0_0';
+    {
+      const { map } = useStorage();
+      const keyB64 = Buffer.alloc(32, 9).toString('base64');
+      const legacyKey = CryptoJS.AES.encrypt(keyB64, OLD_PASSWORD).toString();
+      map.set(cacheKey, legacyKey);
+      const upgraded = await vault.maybeUpgradeStoredBlob(cacheKey, legacyKey, keyB64, OLD_PASSWORD, 'privateKey');
+      assert.ok(upgraded, 'the legacy key cache must upgrade');
+      assert.equal(map.get(cacheKey), upgraded);
+      assert.equal(map.has(`${cacheKey}.bak`), false, 'key caches keep no .bak copy');
+      assert.equal(map.has(`${cacheKey}.prev`), false, 'key caches keep no .prev copy');
+    }
+
+    // --- 4e. storeVerifiedBlob: the only other door for an already-encrypted blob ---
+    {
+      const { map } = useStorage();
+      const keyB64 = Buffer.alloc(32, 9).toString('base64');
+      const notAKey = await vault.encryptWithPassword(SEED, 'pw-key-4');
+      await assert.rejects(
+        () => vault.storeVerifiedBlob(cacheKey, null, notAKey, 'pw-key-4', 'privateKey'),
+        /Failed to decrypt/
+      );
+      assert.equal(map.has(cacheKey), false, 'a blob of the wrong kind is never stored');
+      const keyBlob = await vault.encryptWithPassword(keyB64, 'pw-key-4');
+      await assert.rejects(
+        () => vault.storeVerifiedBlob(cacheKey, null, keyBlob, 'wrong password', 'privateKey'),
+        /Failed to decrypt/
+      );
+      assert.equal(map.has(cacheKey), false, 'a blob that does not open is never stored');
+      assert.equal(await vault.storeVerifiedBlob(cacheKey, null, keyBlob, 'pw-key-4', 'privateKey'), keyBlob);
+      assert.equal(map.get(cacheKey), keyBlob);
+    }
+
+    // --- 4f. signing derives and caches the key without any backup copy ---
+    {
+      const { map } = useStorage();
+      map.set('encryptedSeed', await vault.encryptWithPassword(SEED, 'pw-derive-5'));
+      const ltcCacheKey = 'encryptedPrivateKey:LTC:m_84_2_0_0_0'; // networkPaths.LTC
+      const cached = await wallet.getOrDeriveKeyPair('pw-derive-5', 'LTC');
+      assert.equal(map.get(ltcCacheKey), cached, 'the derived key is cached under the network label');
+      const keyBytes = Buffer.from(await vault.decryptWithPassword(cached, 'pw-derive-5', 'privateKey'), 'base64');
+      assert.equal(keyBytes.length, 32);
+      assert.equal(map.has(`${ltcCacheKey}.bak`), false, 'the derived key cache keeps no backup');
+      assert.equal(map.has(`${ltcCacheKey}.prev`), false);
+    }
+
+    // --- 4g. every localStorage write outside lib/secureVault.js is a non-vault key ---
+    {
+      const offenders = [];
+      const walk = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walk(full);
+          } else if (entry.name.endsWith('.js') && entry.name !== 'bitcoinjs-lib.js') {
+            fs.readFileSync(full, 'utf8')
+              .split('\n')
+              .forEach((line, index) => {
+                // Vault data is written only by secureVault. Any other
+                // encryption of key material (a second scheme) is an offender too.
+                const writesVault = line.includes('localStorage.setItem(') && !line.includes("'multisigs'");
+                if (writesVault || line.includes('CryptoJS.AES.encrypt(')) {
+                  offenders.push(`${path.relative(ROOT, full)}:${index + 1}`);
+                }
+              });
+          }
+        }
+      };
+      for (const dir of ['lib', 'components', 'popup', 'background', 'store']) {
+        walk(path.join(ROOT, dir));
+      }
+      assert.deepEqual(
+        offenders.filter((line) => !line.startsWith('lib/secureVault.js:')),
+        [],
+        'vault data must only be written through lib/secureVault.js'
+      );
+    }
+
+    // --- 4h. a restore from .bak never overwrites the only good copy in .prev ---
+    {
+      // State left by an interrupted rollback: the live seed is unreadable and
+      // .prev holds the last decryptable copy.
+      const { map } = useStorage();
+      const goodPrev = await vault.encryptWithPassword(SEED, 'pw-prev-6');
+      const bak = await vault.encryptWithPassword(SEED, 'pw-bak-6');
+      map.set('encryptedSeed', 'unreadable live value');
+      map.set('encryptedSeed.bak', bak);
+      map.set('encryptedSeed.prev', goodPrev);
+      assert.equal(
+        await vault.restoreFromBackup('encryptedSeed', 'pw-bak-6', SEED_KIND, 'bak'),
+        bak,
+        'the .bak blob opens and becomes the live seed'
+      );
+      assert.equal(map.get('encryptedSeed'), bak);
+      assert.equal(
+        map.get('encryptedSeed.prev'),
+        goodPrev,
+        'a restore must not replace the decryptable .prev copy with the unreadable live value'
+      );
+      assert.equal(await vault.decryptWithPassword(goodPrev, 'pw-prev-6', SEED_KIND), SEED);
+    }
+
     // --- 5. seed writes serialize on the origin-wide Web Lock when present ---
     {
       const { map } = useStorage();
@@ -220,7 +404,6 @@ const makeStorage = () => {
     }
 
     // --- 6. key-cache namespace and sweep ---
-    const cacheKey = 'encryptedPrivateKey:LTC:m_44_2_0_0_0';
     assert.equal(vault.isPrivateKeyCacheKey(cacheKey), true);
     assert.equal(vault.isPrivateKeyCacheKey(`${cacheKey}.bak`), false);
     assert.equal(vault.isPrivateKeyCacheKey(`${cacheKey}.prev`), false);

@@ -193,6 +193,9 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
       'fixture must decode to the same 32 bytes'
     );
     assert.equal(validatePrivateKeyPlaintext(nonCanonicalKeyB64), false, 'non-canonical base64 must be rejected');
+    // The canonical form is exact: no surrounding whitespace is part of it.
+    assert.equal(validatePrivateKeyPlaintext(`${keyB64}\n`), false, 'trailing whitespace is not canonical');
+    assert.equal(validatePrivateKeyPlaintext(` ${keyB64}`), false, 'leading whitespace is not canonical');
 
     // --- new-password policy (fix 5) ---
     assert.equal(checkNewPasswordPolicy('long enough password'), null);

@@ -40,9 +40,11 @@ import {
 } from '../store/store';
 
 // Recovery helper, documented in README.md: run in the popup's devtools console
-// with the password that opened the backup. Restores encryptedSeed from its
-// one-time .bak after verifying it, and keeps the displaced blob in .prev.
-window.restoreSeedFromBackup = (password) => restoreFromBackup('encryptedSeed', password);
+// with the password that opens the chosen backup slot ('bak' by default, or
+// 'prev' after an interrupted password change). The slot's blob is verified
+// before it replaces encryptedSeed, and the blob it displaces is kept in .prev.
+window.restoreSeedFromBackup = (password, source = 'bak') =>
+  restoreFromBackup('encryptedSeed', password, undefined, source);
 
 const normalizeWalletNetwork = (network) => {
   const value = String(network || 'LTC').trim().toUpperCase();

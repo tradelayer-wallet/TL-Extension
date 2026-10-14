@@ -112,6 +112,7 @@ const expectRefusal = async (promise, pattern) => {
   }
 };
 
+const localStore = new Map();
 const tests = [];
 const test = (name, fn) => tests.push({ name, fn });
 
@@ -207,11 +208,71 @@ test('popup: approval messages are accepted only from extension pages', () => {
   assert.equal(isExtensionPageMessage({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, 'ext'), false);
   assert.equal(isExtensionPageMessage({ id: 'other' }, 'ext'), false);
   assert.equal(isExtensionPageMessage(undefined, 'ext'), false);
+
+test('legacy transfer: two selected UTXOs from the wallet address, change returns to the wallet (honest)', async () => {
+  useKey();
+  const res = await wallet.signTransaction(
+    { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.9, inputs: utxos() },
+    'pw',
+    'LTCTEST'
+  );
+  assert.equal(res.success, true);
+  const tx = bitcoin.Transaction.fromHex(res.data.rawTx);
+  assert.equal(tx.ins.length, 2);
+  const outs = decodeOutputs(res.data.rawTx);
+  assert.equal(outs[0].sats, 90_000_000);
+  assert.equal(outs[1].address, p2wpkhAddress(user));
+  assert.equal(outs[1].sats, 110_000_000 - 90_000_000 - 10_000);
+});
+
+test('legacy transfer: an exact send with no change output (honest)', async () => {
+  useKey();
+  const single = [{ txid: '33'.repeat(32), vout: 0, amount: 0.1, scriptPubKey: userScriptHex, confirmations: 6 }];
+  // 0.1 LTC in, 0.0999 out, 10000 sat fee: the change is exactly zero, so there is no change output.
+  const res = await wallet.signTransaction(
+    { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.0999, inputs: single },
+    'pw',
+    'LTCTEST'
+  );
+  assert.equal(res.success, true);
+  const outs = decodeOutputs(res.data.rawTx);
+  assert.equal(outs.length, 1);
+  assert.equal(outs[0].address, p2wpkhAddress(recipient));
+});
+
+test('PSBT: a P2WSH UTXO with no witnessScript in the PSBT is matched through the multisig registry (honest)', async () => {
+  // Regression: the derivation used a P2WPKH-only decoder, which throws on a 34-byte P2WSH script,
+  // so the honest PSBT was refused instead of matched to its registered channel.
+  useKey();
+  const witnessScript = bitcoin.script.compile([
+    bitcoin.opcodes.OP_2,
+    Buffer.from(user.publicKey),
+    Buffer.from(other.publicKey),
+    bitcoin.opcodes.OP_2,
+    bitcoin.opcodes.OP_CHECKMULTISIG,
+  ]);
+  const p2wsh = bitcoin.payments.p2wsh({ redeem: { output: witnessScript }, network: LTCTEST });
+  const psbt = new bitcoin.Psbt({ network: LTCTEST });
+  psbt.addInput({ hash: Buffer.alloc(32, 5), index: 0, witnessUtxo: { script: Buffer.from(p2wsh.output), value: 100000n } });
+  psbt.addOutput({ address: p2wpkhAddress(recipient), value: 90000n });
+  localStore.set('multisigs', JSON.stringify([{ address: p2wsh.address, redeemScript: Buffer.from(witnessScript).toString('hex') }]));
+  try {
+    const signed = await wallet.signInputsInPsbt(psbt.toHex(), 'LTCTEST', 'pw', true, undefined);
+    assert.equal(signed.success, true);
+  } finally {
+    localStore.delete('multisigs');
+  }
+});
+
 });
 
 (async () => {
-  // The PSBT path reads the multisig registry from localStorage; an empty registry suffices here.
-  globalThis.localStorage = globalThis.localStorage || { getItem: () => null, setItem() {}, removeItem() {} };
+  // The PSBT path reads the multisig registry from localStorage. Tests seed it through this map.
+  globalThis.localStorage = {
+    getItem: (key) => (localStore.has(key) ? localStore.get(key) : null),
+    setItem: (key, value) => localStore.set(key, String(value)),
+    removeItem: (key) => localStore.delete(key),
+  };
   wallet = await bundleWalletUtils();
   let failed = 0;
   for (const { name, fn } of tests) {

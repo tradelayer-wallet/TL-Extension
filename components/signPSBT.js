@@ -74,7 +74,24 @@ const SignPSBT = () => {
     dispatch(setStep(7));
   };
 
+  // Approve runs a password check and two PBKDF2 key derivations (600k iterations, async WebCrypto,
+  // so the page stays responsive while they run). A ref blocks a second click before React re-renders,
+  // and the button is disabled while the first one is in progress.
+  const [signing, setSigning] = useState(false);
+  const signingRef = useRef(false);
   const sign = async () => {
+    if (signingRef.current) return;
+    signingRef.current = true;
+    setSigning(true);
+    try {
+      await approve();
+    } finally {
+      signingRef.current = false;
+      setSigning(false);
+    }
+  };
+
+  const approve = async () => {
     const password = passwordRef.current.value || '';
     passwordRef.current.value = '';
 
@@ -193,7 +210,7 @@ const SignPSBT = () => {
         />
       </div>
 
-      <button onClick={sign} disabled={!summary}>Approve</button>
+      <button onClick={sign} disabled={!summary || signing}>Approve</button>
       <button onClick={() => reject()}>Reject</button>
     </div>
   );

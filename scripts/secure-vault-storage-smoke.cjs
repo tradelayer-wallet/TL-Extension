@@ -290,6 +290,11 @@ const makeStorage = () => {
       const keyB64 = Buffer.alloc(32, 9).toString('base64');
       const legacyKey = CryptoJS.AES.encrypt(keyB64, OLD_PASSWORD).toString();
       map.set(cacheKey, legacyKey);
+      // A cache is only written while the live seed opens under its password.
+      const orphan = await vault.maybeUpgradeStoredBlob(cacheKey, legacyKey, keyB64, OLD_PASSWORD, 'privateKey');
+      assert.equal(orphan, null, 'a cache with no live seed must not be migrated');
+      assert.equal(map.get(cacheKey), legacyKey, 'a refused migration changes nothing');
+      map.set('encryptedSeed', await vault.encryptWithPassword(SEED, OLD_PASSWORD));
       const upgraded = await vault.maybeUpgradeStoredBlob(cacheKey, legacyKey, keyB64, OLD_PASSWORD, 'privateKey');
       assert.ok(upgraded, 'the legacy key cache must upgrade');
       assert.equal(map.get(cacheKey), upgraded);

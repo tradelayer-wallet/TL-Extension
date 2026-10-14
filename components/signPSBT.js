@@ -15,6 +15,7 @@ const SignPSBT = () => {
   const requestOrigin = useSelector((state) => state.requestOrigin);
   const address = useSelector((state) => state.address);
   const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,6 +23,7 @@ const SignPSBT = () => {
     const loadSummary = async () => {
       if (!psbtPayload?.psbtHex) {
         setSummary(null);
+        setSummaryError('No PSBT loaded.');
         return;
       }
 
@@ -42,11 +44,13 @@ const SignPSBT = () => {
         );
         if (!cancelled) {
           setSummary(nextSummary);
+          setSummaryError(null);
         }
       } catch (error) {
         console.error('Failed to summarize PSBT:', error);
         if (!cancelled) {
           setSummary(null);
+          setSummaryError(error.message || 'The PSBT could not be decoded.');
         }
       }
     };
@@ -73,6 +77,13 @@ const SignPSBT = () => {
   const sign = async () => {
     const password = passwordRef.current.value || '';
     passwordRef.current.value = '';
+
+    // Signing needs the spend summary the user is reviewing. Without it the
+    // user would approve outputs they cannot see.
+    if (!summary) {
+      alert('The spend summary is not available, so this PSBT cannot be signed.');
+      return;
+    }
 
     if (!password) {
       alert('Please enter a password');
@@ -133,6 +144,14 @@ const SignPSBT = () => {
       {network && <p><strong>Network:</strong> {network}</p>}
       <p><strong>Role:</strong> {sellerFlag ? 'Partial signer' : 'Final signer'}</p>
 
+      {!summary && (
+        <p style={{ color: '#b00020' }}>
+          {summaryError
+            ? `Spend summary unavailable: ${summaryError}. Signing is disabled.`
+            : 'Loading spend summary...'}
+        </p>
+      )}
+
       {summary && (
         <div>
           <h3>Spend Summary</h3>
@@ -174,7 +193,7 @@ const SignPSBT = () => {
         />
       </div>
 
-      <button onClick={sign}>Approve</button>
+      <button onClick={sign} disabled={!summary}>Approve</button>
       <button onClick={() => reject()}>Reject</button>
     </div>
   );

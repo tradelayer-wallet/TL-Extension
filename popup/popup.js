@@ -23,6 +23,7 @@ import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
 import { restoreFromBackup } from '../lib/secureVault';
+import { isExtensionPageMessage } from '../lib/spendGuards';
 import {
   setAddress,
   setApprovalRequest,
@@ -173,6 +174,10 @@ const App = () => {
 
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
+      // Only the extension's own pages and service worker may drive this popup.
+      if (!isExtensionPageMessage(sender, chrome.runtime.id)) {
+        return false;
+      }
       console.log('inside listener in popup.js ' + JSON.stringify(message));
 
       if (message.method === 'getAccount') {

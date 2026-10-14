@@ -1,0 +1,230 @@
+// Regression smoke test for what a signing request may ask the wallet to sign
+// (run under plain Node, offline; throwaway testnet keys only):
+//   - a legacy transfer is funded only from the wallet's own address: a page
+//     cannot route change to another address (R8 critical)
+//   - a legacy transfer signs only inputs that pay to the wallet's own key
+//   - PSBT signing uses SIGHASH_ALL on every input, whatever the PSBT asks for
+//   - a witness script is attached only when the UTXO script commits to it; a
+//     UTXO script is never rewritten (the signed sighash commits to it)
+//   - popup approval messages are accepted only from extension pages
+// walletUtils.js is bundled from the real source. The only substitution is the
+// key-cache lookup, which is replaced by a hook that returns a throwaway key.
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const esbuild = require('esbuild');
+const bitcoin = require('bitcoinjs-lib');
+const { ECPairFactory } = require('ecpair');
+const ecc = require('@bitcoinerlab/secp256k1');
+
+const ROOT = path.resolve(__dirname, '..');
+const ECPair = ECPairFactory(ecc);
+const LTCTEST = {
+  messagePrefix: '\x19Litecoin Signed Message:\n',
+  bech32: 'tltc',
+  bip32: { public: 0x043587cf, private: 0x04358394 },
+  pubKeyHash: 0x6f,
+  scriptHash: 0x3a,
+  wif: 0xef,
+};
+
+// The wallet module to test. R8_OLD_WALLET_UTILS points at a pre-fix copy, so the
+// same assertions can be run against the old behavior.
+const WALLET_SOURCE = process.env.R8_OLD_WALLET_UTILS || path.join(ROOT, 'lib', 'walletUtils.js');
+
+const bundleWalletUtils = async () => {
+  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'spend-binding-smoke-'));
+  const outfile = path.join(outDir, 'walletUtils.cjs');
+  await esbuild.build({
+    entryPoints: [WALLET_SOURCE],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    outfile,
+    logLevel: 'silent',
+    nodePaths: [path.join(ROOT, 'node_modules')],
+    plugins: [
+      {
+        name: 'spend-binding-test-seams',
+        setup(build) {
+          build.onLoad({ filter: /walletUtils\.js$/ }, (args) => {
+            let text = fs.readFileSync(args.path, 'utf8');
+            // bitcoinjs-lib v7 has no TransactionBuilder export; the import is unused.
+            text = text.replace('import { TransactionBuilder, networks,Psbt, payments }', 'import { networks,Psbt, payments }');
+            text = text.replace(
+              'export async function getSigningKeyBase64(password, network) {',
+              'export async function getSigningKeyBase64(password, network) {\n' +
+                '  if (globalThis.__TL_TEST_SIGNING_KEY_B64__) return globalThis.__TL_TEST_SIGNING_KEY_B64__;'
+            );
+            if (!text.includes('__TL_TEST_SIGNING_KEY_B64__')) {
+              throw new Error('smoke: key-lookup seam not found in walletUtils.js');
+            }
+            return { contents: text, loader: 'js', resolveDir: path.dirname(args.path) };
+          });
+        },
+      },
+    ],
+  });
+  return require(outfile);
+};
+
+const randomKey = () => ECPair.fromPrivateKey(crypto.randomBytes(32), { network: LTCTEST });
+const p2wpkhScript = (kp) => Buffer.from(bitcoin.payments.p2wpkh({ pubkey: Buffer.from(kp.publicKey), network: LTCTEST }).output);
+const p2wpkhAddress = (kp) => bitcoin.payments.p2wpkh({ pubkey: Buffer.from(kp.publicKey), network: LTCTEST }).address;
+
+const user = randomKey();
+const attacker = randomKey();
+const recipient = randomKey();
+const other = randomKey();
+const userScriptHex = p2wpkhScript(user).toString('hex');
+
+let wallet = null;
+const useKey = () => {
+  globalThis.__TL_TEST_SIGNING_KEY_B64__ = Buffer.from(user.privateKey).toString('base64');
+};
+
+const utxos = () => [
+  { txid: '11'.repeat(32), vout: 0, amount: 0.6, scriptPubKey: userScriptHex, confirmations: 6 },
+  { txid: '22'.repeat(32), vout: 1, amount: 0.5, scriptPubKey: userScriptHex, confirmations: 6 },
+];
+const decodeOutputs = (rawHex) =>
+  bitcoin.Transaction.fromHex(rawHex).outs.map((o) => ({
+    address: bitcoin.address.fromOutputScript(o.script, LTCTEST),
+    sats: Number(o.value),
+  }));
+
+// Rejects unless the call fails with a message matching `pattern`. The message
+// is reported on failure, so a wrong refusal is visible.
+const expectRefusal = async (promise, pattern) => {
+  let message = null;
+  try {
+    await promise;
+  } catch (error) {
+    message = error.message;
+  }
+  if (message === null) {
+    throw new Error(`expected a refusal matching ${pattern}, but the call succeeded`);
+  }
+  if (!pattern.test(message)) {
+    throw new Error(`refusal did not match ${pattern}: ${message.split('\n')[0]}`);
+  }
+};
+
+const tests = [];
+const test = (name, fn) => tests.push({ name, fn });
+
+test('legacy transfer: funded from the wallet address, change returns to the wallet', async () => {
+  useKey();
+  const res = await wallet.signTransaction(
+    { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.1, inputs: utxos() },
+    'pw',
+    'LTCTEST'
+  );
+  assert.equal(res.success, true);
+  const outs = decodeOutputs(res.data.rawTx);
+  assert.equal(outs[0].address, p2wpkhAddress(recipient));
+  assert.equal(outs[0].sats, 10_000_000);
+  assert.equal(outs[1].address, p2wpkhAddress(user));
+});
+
+test('legacy transfer: a page cannot route change to another address', async () => {
+  useKey();
+  await assert.rejects(
+    wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(attacker) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.1, inputs: utxos() },
+      'pw',
+      'LTCTEST'
+    ),
+    /must be funded from this wallet's address/
+  );
+});
+
+test('legacy transfer: an input that does not pay to the wallet key is refused', async () => {
+  useKey();
+  const foreign = utxos();
+  foreign[0].scriptPubKey = p2wpkhScript(other).toString('hex');
+  await assert.rejects(
+    wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.1, inputs: foreign },
+      'pw',
+      'LTCTEST'
+    ),
+    /does not pay to this wallet's key/
+  );
+});
+
+const vanillaPsbt = (sighashType, utxoScript = p2wpkhScript(user)) => {
+  const psbt = new bitcoin.Psbt({ network: LTCTEST });
+  psbt.addInput({
+    hash: Buffer.alloc(32, 7),
+    index: 0,
+    witnessUtxo: { script: utxoScript, value: 100000n },
+    ...(sighashType === undefined ? {} : { sighashType }),
+  });
+  psbt.addOutput({ address: p2wpkhAddress(recipient), value: 90000n });
+  return psbt.toHex();
+};
+
+test('PSBT: a SIGHASH_NONE|ANYONECANPAY input is refused, SIGHASH_ALL is signed', async () => {
+  useKey();
+  await expectRefusal(wallet.signInputsInPsbt(vanillaPsbt(0x82), 'LTCTEST', 'pw', true, undefined), /Sighash type is not allowed/);
+  const ok = await wallet.signInputsInPsbt(vanillaPsbt(0x01), 'LTCTEST', 'pw', true, undefined);
+  assert.equal(ok.success, true);
+});
+
+test('PSBT: a UTXO script that does not commit to the witness script is refused, not rewritten', async () => {
+  useKey();
+  const witnessScript = bitcoin.script.compile([
+    bitcoin.opcodes.OP_2,
+    Buffer.from(user.publicKey),
+    Buffer.from(other.publicKey),
+    bitcoin.opcodes.OP_2,
+    bitcoin.opcodes.OP_CHECKMULTISIG,
+  ]);
+  const realUtxoScript = Buffer.from(bitcoin.payments.p2wsh({ redeem: { output: witnessScript }, network: LTCTEST }).output);
+  const wrongUtxoScript = p2wpkhScript(attacker);
+
+  const psbt = new bitcoin.Psbt({ network: LTCTEST });
+  psbt.addInput({ hash: Buffer.alloc(32, 9), index: 0, witnessUtxo: { script: wrongUtxoScript, value: 100000n } });
+  psbt.addOutput({ address: p2wpkhAddress(recipient), value: 90000n });
+  await expectRefusal(
+    wallet.signInputsInPsbt(psbt.toHex(), 'LTCTEST', 'pw', true, Buffer.from(witnessScript).toString('hex')),
+    /does not match the witness script/
+  );
+
+  const good = new bitcoin.Psbt({ network: LTCTEST });
+  good.addInput({ hash: Buffer.alloc(32, 9), index: 0, witnessUtxo: { script: realUtxoScript, value: 100000n } });
+  good.addOutput({ address: p2wpkhAddress(recipient), value: 90000n });
+  const signed = await wallet.signInputsInPsbt(good.toHex(), 'LTCTEST', 'pw', true, Buffer.from(witnessScript).toString('hex'));
+  assert.equal(signed.success, true);
+});
+
+test('popup: approval messages are accepted only from extension pages', () => {
+  const { isExtensionPageMessage } = require(path.join(ROOT, 'lib', 'spendGuards.js'));
+  assert.equal(isExtensionPageMessage({ id: 'ext', url: 'chrome-extension://ext/popup/popup.html' }, 'ext'), true);
+  assert.equal(isExtensionPageMessage({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, 'ext'), false);
+  assert.equal(isExtensionPageMessage({ id: 'other' }, 'ext'), false);
+  assert.equal(isExtensionPageMessage(undefined, 'ext'), false);
+});
+
+(async () => {
+  // The PSBT path reads the multisig registry from localStorage; an empty registry suffices here.
+  globalThis.localStorage = globalThis.localStorage || { getItem: () => null, setItem() {}, removeItem() {} };
+  wallet = await bundleWalletUtils();
+  let failed = 0;
+  for (const { name, fn } of tests) {
+    try {
+      await fn();
+      console.log(`[spend-binding] ok: ${name}`);
+    } catch (error) {
+      failed += 1;
+      console.error(`[spend-binding] FAIL: ${name}\n  ${error.message.split('\n')[0]}`);
+    }
+  }
+  if (failed > 0) {
+    process.exit(1);
+  }
+  console.log('[spend-binding] all spend-binding checks passed');
+})();

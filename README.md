@@ -22,13 +22,23 @@
 
 ## Recovering the seed from its backup
 
-The encrypted seed in `localStorage` is kept under `encryptedSeed.bak`: the
-first blob the wallet ever replaced (for example, the seed as it was before
-the one-time upgrade of an older wallet, or before the first password change).
-It is never replaced. Changing the password does not keep the previous
-password's copy, except in `encryptedSeed.bak` as described. While a password
-change is in progress, or after one was interrupted, the replaced blob is also
-kept in `encryptedSeed.prev`; a successful change removes it.
+The seed lives in `localStorage` under `encryptedSeed`, and it is backed up in
+two slots:
+
+- `encryptedSeed.bak`: the first v2 seed blob the wallet ever replaced (for
+  example, the copy from before the first password change). It is never
+  replaced. A legacy-format copy is never kept here: once the upgraded copy has
+  been verified, the legacy copy is discarded, because that format is much
+  cheaper to brute-force. Changing the password does not remove `.bak`, so the
+  password the `.bak` copy was written with still opens it.
+- `encryptedSeed.prev`: the blob a write is replacing. It is removed when the
+  write completes or is rolled back. It stays only after an interrupted write
+  or after a restore.
+
+A password change also removes the stored private-key caches, because they are
+encrypted under the old password. If a cache cannot be removed, the change is
+refused and nothing is changed. Vault writes need Web Locks
+(`navigator.locks`); without them, every write is refused.
 
 If the current seed stops opening, restore a backup from the popup's devtools
 console (right-click the popup, Inspect, Console):
@@ -39,9 +49,9 @@ await restoreSeedFromBackup('the password that opens the backup', 'prev') // fro
 ```
 
 A backup is only written over the current seed after it decrypts with that
-password. The blob it replaces is kept in `encryptedSeed.prev`, unless
-`encryptedSeed.prev` already holds a different copy: that copy is kept instead,
-because it may be the last one that decrypts. A restore leaves `.prev` in
-place until the next password change removes it. For a
+password. The live value a restore replaces is kept in `encryptedSeed.prev`
+only when `.prev` is empty or already holds that same value. If `.prev` holds a
+different copy, that copy is kept instead, and the live value is discarded even
+if it still opens under another password. A restore never creates `.bak`. For a
 wallet that never had a password, pass `''`. Then reopen the popup and unlock
 with the same password.

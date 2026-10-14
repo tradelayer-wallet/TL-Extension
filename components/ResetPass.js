@@ -1,7 +1,6 @@
 import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
-import { clearPrivateKeyCaches } from '../lib/walletUtils';
 import {
   decryptWithPasswordInfo,
   checkNewPasswordPolicy,
@@ -58,12 +57,13 @@ const ResetPassword = () => {
         return;
       }
 
-      // Re-encrypt the seed under the new password. replaceStoredBlob keeps
-      // the old ciphertext as a backup and only keeps the new one once it
-      // decrypts back; it throws if the stored seed changed meanwhile.
+      // Re-encrypt the seed under the new password. replaceStoredBlob sweeps the
+      // key caches (encrypted under the old password) under the vault lock,
+      // keeps the old ciphertext as a backup, and only keeps the new one once it
+      // decrypts back. It throws, and changes nothing, if the stored seed
+      // changed meanwhile or a cache could not be removed.
       await replaceStoredBlob('encryptedSeed', encryptedSeed, decrypted, newPassword, PLAINTEXT_KIND.SEED);
       decrypted = null;
-      clearPrivateKeyCaches();
 
       // Clear password refs
       currentPasswordRef.current.value = '';

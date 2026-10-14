@@ -15,6 +15,23 @@ const os = require('node:os');
 const path = require('node:path');
 const { webcrypto } = require('node:crypto');
 const esbuild = require('esbuild');
+// Vault writes need navigator.locks. Node 24 has it natively; older Node does
+// not, so give these single-process tests a FIFO lock with the same semantics.
+if (!globalThis.navigator || !globalThis.navigator.locks) {
+  let lockTail = Promise.resolve();
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      locks: {
+        request(_name, callback) {
+          const run = lockTail.then(() => callback());
+          lockTail = run.catch(() => {});
+          return run;
+        },
+      },
+    },
+  });
+}
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -290,23 +307,26 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
     );
     assert.equal(store.get('encryptedSeed'), legacyBlob);
 
-    // The correct password still migrates — and a one-time .bak of the old
-    // blob is kept before the first overwrite.
+    // The correct password still migrates. The legacy blob is not kept in any
+    // backup slot once the v2 copy has verified: the legacy format is cheap to
+    // brute-force, so keeping it would weaken the v2 copy of the same seed.
     const upgraded = await maybeUpgradeStoredBlob('encryptedSeed', legacyBlob, plaintext, 'old password', PLAINTEXT_KIND.SEED);
     assert.ok(upgraded, 'upgrade should produce a new blob');
     assert.equal(store.get('encryptedSeed'), upgraded, 'stored blob must be rewritten');
     assert.equal(b64Json(upgraded).v, 2, 'upgraded blob must be v2');
     assert.equal(await decryptWithPassword(store.get('encryptedSeed'), 'old password', PLAINTEXT_KIND.SEED), plaintext);
-    assert.equal(store.get('encryptedSeed.bak'), legacyBlob, 'one-time backup of the pre-migration blob');
+    assert.equal(store.has('encryptedSeed.bak'), false, 'a verified migration keeps no legacy .bak');
+    assert.equal(store.has('encryptedSeed.prev'), false, 'a completed migration drops .prev');
 
-    // The backup is one-time: later migrations never clobber the original.
+    // Later migrations also keep no legacy copy.
     const secondMnemonic = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
     assert.equal(validateSeedPlaintext(secondMnemonic), true);
     const secondLegacyBlob = CryptoJS.AES.encrypt(secondMnemonic, 'old password 2').toString();
     store.set('encryptedSeed', secondLegacyBlob);
     const secondUpgrade = await maybeUpgradeStoredBlob('encryptedSeed', secondLegacyBlob, secondMnemonic, 'old password 2', PLAINTEXT_KIND.SEED);
     assert.ok(secondUpgrade);
-    assert.equal(store.get('encryptedSeed.bak'), legacyBlob, '.bak must keep the FIRST pre-migration blob');
+    assert.equal(store.has('encryptedSeed.bak'), false, 'no legacy blob is ever kept in .bak');
+    assert.equal(store.has('encryptedSeed.prev'), false, 'no displaced copy is left after a verified migration');
 
     // Stale writes must not clobber concurrent updates.
     store.set('encryptedSeed', legacyBlob);

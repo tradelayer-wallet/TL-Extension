@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you have an action to set the password
 import { setStep } from '../store/store';
-import { clearPrivateKeyCaches } from '../lib/walletUtils';
 import {
   decryptWithPasswordInfo,
   checkNewPasswordPolicy,
@@ -47,7 +46,6 @@ const PasswordSetup = () => {
         // Store the seed as a v2 vault blob. replaceStoredBlob only keeps it
         // after it decrypts back to the seed phrase under this password.
         await replaceStoredBlob('encryptedSeed', null, seedPhrase, password, PLAINTEXT_KIND.SEED);
-        clearPrivateKeyCaches();
       } else {
         // An existing seed: the password must open it (the plaintext must be a
         // valid BIP39 mnemonic).

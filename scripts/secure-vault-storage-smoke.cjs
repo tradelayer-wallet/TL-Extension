@@ -17,6 +17,23 @@ const os = require('node:os');
 const path = require('node:path');
 const esbuild = require('esbuild');
 const CryptoJS = require('crypto-js');
+// Vault writes need navigator.locks. Node 24 has it natively; older Node does
+// not, so give these single-process tests a FIFO lock with the same semantics.
+if (!globalThis.navigator || !globalThis.navigator.locks) {
+  let lockTail = Promise.resolve();
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      locks: {
+        request(_name, callback) {
+          const run = lockTail.then(() => callback());
+          lockTail = run.catch(() => {});
+          return run;
+        },
+      },
+    },
+  });
+}
 
 const ROOT = path.resolve(__dirname, '..');
 const SEED = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -114,7 +131,8 @@ const makeStorage = () => {
     // --- 2. verification failure rolls back our write, prior blob intact ---
     {
       const { map } = useStorage();
-      map.set('encryptedSeed', legacySeed);
+      const v2Prior = await vault.encryptWithPassword(SEED, 'pw-prior-2');
+      map.set('encryptedSeed', v2Prior);
       // The next decrypt is the verify step of the write; fail it once.
       const subtle = globalThis.crypto.subtle;
       subtle.decrypt = async () => {
@@ -122,11 +140,11 @@ const makeStorage = () => {
         throw new Error('injected verify failure');
       };
       await assert.rejects(
-        () => vault.replaceStoredBlob('encryptedSeed', legacySeed, SEED, 'fresh password 1', SEED_KIND),
+        () => vault.replaceStoredBlob('encryptedSeed', v2Prior, SEED, 'fresh password 1', SEED_KIND),
         /Failed to decrypt/
       );
-      assert.equal(map.get('encryptedSeed'), legacySeed, 'prior blob must be restored byte-for-byte');
-      assert.equal(map.get('encryptedSeed.bak'), legacySeed, 'one-time backup holds the prior blob');
+      assert.equal(map.get('encryptedSeed'), v2Prior, 'prior blob must be restored byte-for-byte');
+      assert.equal(map.get('encryptedSeed.bak'), v2Prior, 'one-time backup holds the first v2 blob displaced');
       assert.equal(map.has('encryptedSeed.prev'), false, 'a completed rollback leaves no displaced copy behind');
     }
 
@@ -138,8 +156,8 @@ const makeStorage = () => {
       assert.ok(upgraded, 'the correct password must migrate');
       const reset = await vault.replaceStoredBlob('encryptedSeed', upgraded, SEED, 'brand new password', SEED_KIND);
       assert.equal(map.get('encryptedSeed'), reset);
-      assert.equal(map.get('encryptedSeed.bak'), legacySeed, '.bak stays the first blob ever displaced');
-      assert.equal(map.has('encryptedSeed.prev'), false, 'a verified reset drops the displaced blob (no old-password copy kept)');
+      assert.equal(map.get('encryptedSeed.bak'), upgraded, '.bak holds the first v2 blob ever displaced');
+      assert.equal(map.has('encryptedSeed.prev'), false, 'a verified reset drops the displaced blob from .prev');
       assert.equal(await vault.decryptWithPassword(reset, 'brand new password', SEED_KIND), SEED);
 
       // A writer that validated against the pre-reset blob must not overwrite the reset.
@@ -279,24 +297,48 @@ const makeStorage = () => {
       assert.equal(map.has(`${cacheKey}.prev`), false, 'key caches keep no .prev copy');
     }
 
-    // --- 4e. storeVerifiedBlob: the only other door for an already-encrypted blob ---
+    // --- 4e. storeKeyCacheBlob: the only door for an already-encrypted key cache ---
     {
       const { map } = useStorage();
       const keyB64 = Buffer.alloc(32, 9).toString('base64');
+      const seedBlob = await vault.encryptWithPassword(SEED, 'pw-key-4');
+      map.set('encryptedSeed', seedBlob);
       const notAKey = await vault.encryptWithPassword(SEED, 'pw-key-4');
       await assert.rejects(
-        () => vault.storeVerifiedBlob(cacheKey, null, notAKey, 'pw-key-4', 'privateKey'),
+        () => vault.storeKeyCacheBlob(cacheKey, notAKey, 'pw-key-4'),
         /Failed to decrypt/
       );
       assert.equal(map.has(cacheKey), false, 'a blob of the wrong kind is never stored');
       const keyBlob = await vault.encryptWithPassword(keyB64, 'pw-key-4');
       await assert.rejects(
-        () => vault.storeVerifiedBlob(cacheKey, null, keyBlob, 'wrong password', 'privateKey'),
-        /Failed to decrypt/
+        () => vault.storeKeyCacheBlob(cacheKey, keyBlob, 'wrong password'),
+        /does not open under the password/
       );
-      assert.equal(map.has(cacheKey), false, 'a blob that does not open is never stored');
-      assert.equal(await vault.storeVerifiedBlob(cacheKey, null, keyBlob, 'pw-key-4', 'privateKey'), keyBlob);
+      assert.equal(map.has(cacheKey), false, 'a key that the live seed does not open under is never stored');
+      await assert.rejects(
+        () => vault.storeKeyCacheBlob('encryptedSeed', keyBlob, 'pw-key-4'),
+        /outside the private-key cache namespace/
+      );
+      assert.equal(await vault.storeKeyCacheBlob(cacheKey, keyBlob, 'pw-key-4'), keyBlob);
       assert.equal(map.get(cacheKey), keyBlob);
+
+      // Guard: once the seed has moved to another password, a key derived under
+      // the old one is never stored (it would outlive its password).
+      map.delete(cacheKey);
+      const newSeed = await vault.encryptWithPassword(SEED, 'pw-key-4b');
+      map.set('encryptedSeed', newSeed);
+      await assert.rejects(
+        () => vault.storeKeyCacheBlob(cacheKey, keyBlob, 'pw-key-4'),
+        /does not open under the password/
+      );
+      assert.equal(map.has(cacheKey), false, 'a stale key cache (old password) is never stored');
+      assert.equal(map.get('encryptedSeed'), newSeed);
+
+      // A migration keeps the password, so a key derived under it is still stored.
+      const sameSeedNewBlob = await vault.encryptWithPassword(SEED, 'pw-key-4b');
+      map.set('encryptedSeed', sameSeedNewBlob);
+      const keyBlobB = await vault.encryptWithPassword(keyB64, 'pw-key-4b');
+      assert.equal(await vault.storeKeyCacheBlob(cacheKey, keyBlobB, 'pw-key-4b'), keyBlobB, 'same password, new blob: stored');
     }
 
     // --- 4f. signing derives and caches the key without any backup copy ---
@@ -367,6 +409,104 @@ const makeStorage = () => {
         'a restore must not replace the decryptable .prev copy with the unreadable live value'
       );
       assert.equal(await vault.decryptWithPassword(goodPrev, 'pw-prev-6', SEED_KIND), SEED);
+    }
+
+    // --- 4i. a restore from .prev never creates .bak ---
+    {
+      const { map } = useStorage();
+      const goodPrev = await vault.encryptWithPassword(SEED, 'pw-prev-7');
+      map.set('encryptedSeed', 'unreadable live value');
+      map.set('encryptedSeed.prev', goodPrev);
+      assert.equal(await vault.restoreFromBackup('encryptedSeed', 'pw-prev-7', SEED_KIND, 'prev'), goodPrev);
+      assert.equal(map.has('encryptedSeed.bak'), false, 'a restore must never create the one-time .bak');
+      assert.equal(map.get('encryptedSeed.prev'), goodPrev, 'the restore source stays in .prev');
+    }
+
+    // --- 4j. a password change sweeps key caches, and aborts if it cannot ---
+    {
+      const { map } = useStorage();
+      const oldBlob = await vault.encryptWithPassword(SEED, 'pw-sweep-8');
+      map.set('encryptedSeed', oldBlob);
+      map.set(cacheKey, await vault.encryptWithPassword(Buffer.alloc(32, 7).toString('base64'), 'pw-sweep-8'));
+      const store = globalThis.localStorage;
+      const realRemove = store.removeItem;
+      store.removeItem = (key) => {
+        if (key === cacheKey) throw new Error('quota: cache removal failed');
+        realRemove(key);
+      };
+      try {
+        await assert.rejects(
+          () => vault.replaceStoredBlob('encryptedSeed', oldBlob, SEED, 'pw-sweep-9', SEED_KIND),
+          /Could not remove 1 key cache entry/
+        );
+      } finally {
+        store.removeItem = realRemove;
+      }
+      assert.equal(map.get('encryptedSeed'), oldBlob, 'a failed sweep aborts the password change');
+      assert.equal(map.has('encryptedSeed.bak'), false, 'nothing is backed up by an aborted change');
+      assert.ok(map.has(cacheKey), 'the cache that could not be removed is still there (and still matches the live seed)');
+
+      const reset = await vault.replaceStoredBlob('encryptedSeed', oldBlob, SEED, 'pw-sweep-9', SEED_KIND);
+      assert.equal(map.get('encryptedSeed'), reset);
+      assert.equal(map.has(cacheKey), false, 'a completed password change leaves no key cache behind');
+      assert.equal(map.get('encryptedSeed.bak'), oldBlob, 'the old password blob is kept as the first v2 backup');
+    }
+
+    // --- 4k. a legacy encryptedKey entry that cannot be removed also fails the sweep ---
+    {
+      const { map } = useStorage();
+      const oldBlob = await vault.encryptWithPassword(SEED, 'pw-sweep-10');
+      map.set('encryptedSeed', oldBlob);
+      map.set('encryptedKey', 'legacy-key');
+      const store = globalThis.localStorage;
+      const realRemove = store.removeItem;
+      store.removeItem = (key) => {
+        if (key === 'encryptedKey') throw new Error('quota: legacy removal failed');
+        realRemove(key);
+      };
+      try {
+        await assert.rejects(
+          () => vault.replaceStoredBlob('encryptedSeed', oldBlob, SEED, 'pw-sweep-11', SEED_KIND),
+          /Could not remove 1 key cache entry/
+        );
+      } finally {
+        store.removeItem = realRemove;
+      }
+      assert.equal(map.get('encryptedSeed'), oldBlob, 'the seed is unchanged when the legacy entry cannot be removed');
+    }
+
+    // --- 4l. without Web Locks, every write is refused and nothing changes ---
+    {
+      const { map } = useStorage();
+      const seed = await vault.encryptWithPassword(SEED, 'pw-nolock-12');
+      map.set('encryptedSeed', await vault.encryptWithPassword(SEED, 'pw-nolock-14'));
+      map.set('encryptedSeed.bak', seed);
+      const realNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+      Object.defineProperty(globalThis, 'navigator', { value: {}, configurable: true });
+      try {
+        const before = new Map(map);
+        await assert.rejects(
+          () => vault.replaceStoredBlob('encryptedSeed', seed, SEED, 'pw-nolock-13', SEED_KIND),
+          /Web Locks/
+        );
+        await assert.rejects(
+          () => vault.restoreFromBackup('encryptedSeed', 'pw-nolock-12', SEED_KIND, 'bak'),
+          /Web Locks/
+        );
+        const keyBlob = await vault.encryptWithPassword(Buffer.alloc(32, 3).toString('base64'), 'pw-nolock-12');
+        await assert.rejects(
+          () => vault.storeKeyCacheBlob(cacheKey, keyBlob, 'pw-nolock-12'),
+          /Web Locks/
+        );
+        assert.equal(await vault.maybeUpgradeStoredBlob('encryptedSeed', seed, SEED, 'pw-nolock-12', SEED_KIND), null);
+        assert.deepEqual(new Map(map), before, 'no write happens without the lock');
+      } finally {
+        if (realNavigator) {
+          Object.defineProperty(globalThis, 'navigator', realNavigator);
+        } else {
+          delete globalThis.navigator;
+        }
+      }
     }
 
     // --- 5. seed writes serialize on the origin-wide Web Lock when present ---

@@ -76,12 +76,16 @@ const Send = () => {
         return
       }
       const txResponse = await axios.post(txUrl, { rawTx: decodedTx.data.rawTx });
-      if(!txResponse.data.txid.data){
+      // The relayer answers { txid: "<hex>" } (tl-relayer broadcastTx). Older builds answered
+      // { txid: { data: "<hex>" } }; accept both so the send does not fail on a valid broadcast.
+      const txidField = txResponse.data?.txid;
+      const txid = typeof txidField === 'string' ? txidField : txidField?.data;
+      if(!txid){
         alert("Error sending transaction.")
         return
       }
-      console.log('Transaction sent. TXID:', txResponse.data.txid.data);
-      dispatch(setTxid(txResponse.data.txid.data));
+      console.log('Transaction sent. TXID:', txid);
+      dispatch(setTxid(txid));
       dispatch(setStep(14)); // Move to confirmation step
     } catch (error) {
       console.error('Error sending transaction:', error);

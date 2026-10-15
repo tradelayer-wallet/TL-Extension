@@ -24,6 +24,7 @@ const PACKAGE_PATHS = [
   'dist',
   'images',
   'lib/networks.js',
+  'lib/senders.js',
   'options.html',
   'popup',
   'readyPromise.js',

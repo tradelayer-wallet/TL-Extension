@@ -23,7 +23,7 @@ import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
 import { restoreFromBackup } from '../lib/secureVault';
-import { isExtensionPageMessage } from '../lib/spendGuards';
+import { senderClass } from '../lib/senders';
 import { networkIdOf } from '../lib/networks';
 import {
   setAddress,
@@ -165,7 +165,8 @@ const App = () => {
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
       // Only the extension's own pages and service worker may drive this popup.
-      if (!isExtensionPageMessage(sender, chrome.runtime.id)) {
+      const fromExtension = senderClass(sender, chrome.runtime.id, chrome.runtime.getURL('popup/popup.html'));
+      if (fromExtension !== 'popup' && fromExtension !== 'extension') {
         return false;
       }
       console.log('inside listener in popup.js ' + JSON.stringify(message));

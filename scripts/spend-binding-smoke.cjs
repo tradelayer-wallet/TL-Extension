@@ -202,12 +202,15 @@ test('PSBT: a UTXO script that does not commit to the witness script is refused,
   assert.equal(signed.success, true);
 });
 
-test('popup: approval messages are accepted only from extension pages', () => {
-  const { isExtensionPageMessage } = require(path.join(ROOT, 'lib', 'spendGuards.js'));
-  assert.equal(isExtensionPageMessage({ id: 'ext', url: 'chrome-extension://ext/popup/popup.html' }, 'ext'), true);
-  assert.equal(isExtensionPageMessage({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, 'ext'), false);
-  assert.equal(isExtensionPageMessage({ id: 'other' }, 'ext'), false);
-  assert.equal(isExtensionPageMessage(undefined, 'ext'), false);
+test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
+  const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
+  const popupUrl = 'chrome-extension://ext/popup/popup.html';
+  assert.equal(senderClass({ id: 'ext', url: `${popupUrl}?step=13` }, 'ext', popupUrl), 'popup');
+  assert.equal(senderClass({ id: 'ext', url: 'chrome-extension://ext/background/background.js' }, 'ext', popupUrl), 'extension');
+  assert.equal(senderClass({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, 'ext', popupUrl), 'page');
+  assert.equal(senderClass({ id: 'other', url: popupUrl }, 'ext', popupUrl), 'foreign');
+  assert.equal(senderClass(undefined, 'ext', popupUrl), 'foreign');
+});
 
 test('legacy transfer: two selected UTXOs from the wallet address, change returns to the wallet (honest)', async () => {
   useKey();
@@ -262,8 +265,6 @@ test('PSBT: a P2WSH UTXO with no witnessScript in the PSBT is matched through th
   } finally {
     localStore.delete('multisigs');
   }
-});
-
 });
 
 (async () => {

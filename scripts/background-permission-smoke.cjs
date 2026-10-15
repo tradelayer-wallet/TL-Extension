@@ -55,6 +55,7 @@ const chrome = {
         runtimeListeners.push(listener);
       },
     },
+    id: 'unit',
     lastError: null,
   },
   windows: {
@@ -100,15 +101,16 @@ if (runtimeListeners.length !== 1) {
 }
 
 const listener = runtimeListeners[0];
-const pageSender = { origin, url: `${origin}/provider-smoke`, tab: { id: 1 }, frameId: 0 };
+const pageSender = { id: 'unit', origin, url: `${origin}/provider-smoke`, tab: { id: 1 }, frameId: 0 };
 const untrustedOrigin = 'https://untrusted.example';
 const untrustedSender = {
+  id: 'unit',
   origin: untrustedOrigin,
   url: `${untrustedOrigin}/provider-smoke`,
   tab: { id: 2 },
   frameId: 0,
 };
-const popupSender = { url: `${popupUrl}?step=13&message=unit-sign` };
+const popupSender = { id: 'unit', url: `${popupUrl}?step=13&message=unit-sign` };
 
 const send = (message, sender = pageSender) => new Promise((resolve) => {
   listener(message, sender, resolve);
@@ -304,6 +306,18 @@ const main = async () => {
     throw new Error('Approved legacy sign request did not remain pending for popup approval.');
   }
 
+  await expectFailure(
+    'extension options page cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    { id: 'unit', url: 'chrome-extension://unit/options.html' }
+  );
+  await expectFailure(
+    'foreign extension cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    { id: 'other-extension', url: 'chrome-extension://other-extension/popup/popup.html' }
+  );
   await expectFailure(
     'page sender cannot approve a connect request',
     { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },

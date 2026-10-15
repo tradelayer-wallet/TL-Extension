@@ -1,4 +1,5 @@
 import { networkIdOf } from '../lib/networks.js';
+import { senderClass } from '../lib/senders.js';
 
 const CHANNEL = 'tradelayer-provider';
 const SITE_PERMISSIONS_KEY = 'sitePermissionsV1';
@@ -128,11 +129,6 @@ const getSenderContext = (sender) => {
     tabId,
     frameId: sender.frameId ?? 0,
   };
-};
-
-const isPopupSender = (sender) => {
-  const popupUrl = chrome.runtime.getURL('popup/popup.html');
-  return typeof sender.url === 'string' && sender.url.startsWith(popupUrl);
 };
 
 const getPopupUrl = (step, requestId) => {
@@ -687,7 +683,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (
     ['popupReady', 'approvalDecision', 'signMessageResponse', 'signTxResponse', 'addMultisigResponse', 'rejectPendingRequest'].includes(message.method) &&
-    !isPopupSender(sender)
+    senderClass(sender, chrome.runtime.id, chrome.runtime.getURL('popup/popup.html')) !== 'popup'
   ) {
     respondError(sendResponse, 'Popup-only method called from an invalid sender.');
     return true;

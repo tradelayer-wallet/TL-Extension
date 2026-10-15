@@ -225,6 +225,41 @@ test('PSBT: a witness script already present in the PSBT still needs a UTXO scri
   );
 });
 
+test('trade PSBT: amounts convert to whole satoshis exactly, as the UTXO and the output carry them', () => {
+  // 0.29 * 1e8 is 28999999.999... in binary floating point; truncating it loses a satoshi
+  // from the recorded UTXO value (which the signature commits to) and from the seller output.
+  assert.equal(wallet.ltcToSats(0.29), 29_000_000);
+  assert.equal(wallet.ltcToSats(1.1), 110_000_000);
+  const built = wallet.buildUnsignedPSBT({
+    buyerKeyPair: { address: p2wpkhAddress(user) },
+    sellerKeyPair: { address: p2wpkhAddress(recipient) },
+    amount: 0.29,
+    payload: null,
+    commitUTXOs: [{ txid: '11'.repeat(32), vout: 0, amount: 0.5, scriptPubKey: userScriptHex }],
+    outputs: [],
+    network: 'LTCTEST',
+    sats: 0,
+  });
+  const psbt = bitcoin.Psbt.fromHex(built.psbt, { network: LTCTEST });
+  assert.equal(psbt.data.inputs[0].witnessUtxo.value, 50_000_000n, 'the UTXO value is the UTXO value');
+  assert.equal(Number(psbt.txOutputs[0].value), 50_000_000 - 29_000_000 - 10_000, 'buyer change');
+  assert.equal(Number(psbt.txOutputs[1].value), 29_000_000, 'seller output is the agreed amount');
+
+  const withPayload = wallet.buildUnsignedPSBT({
+    buyerKeyPair: { address: p2wpkhAddress(user) },
+    sellerKeyPair: { address: p2wpkhAddress(recipient) },
+    amount: 0.29,
+    payload: 'tl',
+    commitUTXOs: [{ txid: '11'.repeat(32), vout: 0, amount: 0.5, scriptPubKey: userScriptHex }],
+    outputs: [],
+    network: 'LTCTEST',
+    sats: 0,
+  });
+  const withData = bitcoin.Psbt.fromHex(withPayload.psbt, { network: LTCTEST });
+  assert.equal(withData.txOutputs.length, 3, 'buyer change, seller output and the OP_RETURN payload');
+  assert.equal(Number(withData.txOutputs[2].value), 0, 'the payload output carries no value');
+});
+
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const popupUrl = 'chrome-extension://ext/popup/popup.html';

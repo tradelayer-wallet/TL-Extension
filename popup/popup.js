@@ -24,6 +24,7 @@ import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
 import { restoreFromBackup } from '../lib/secureVault';
 import { isExtensionPageMessage } from '../lib/spendGuards';
+import { networkIdOf } from '../lib/networks';
 import {
   setAddress,
   setApprovalRequest,
@@ -47,17 +48,6 @@ import {
 window.restoreSeedFromBackup = (password, source = 'bak') =>
   restoreFromBackup('encryptedSeed', password, undefined, source);
 
-const normalizeWalletNetwork = (network) => {
-  const value = String(network || 'LTC').trim().toUpperCase();
-
-  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
-  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
-  if (value === 'TESTNET') return 'LTCTEST';
-  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
-  if (value === 'LTC' || value === 'LTCTEST') return value;
-
-  return value;
-};
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
 
@@ -72,14 +62,14 @@ const inferWalletNetworkFromAddress = (address) => {
 };
 
 const pickStoredWalletAccount = (addresses, preferredNetwork) => {
-  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedPreferred = networkIdOf(preferredNetwork);
   const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
     .map((item) => {
       if (typeof item === 'string') {
         return {
           address: item,
           pubkey: null,
-          network: normalizeWalletNetwork(
+          network: networkIdOf(
             inferWalletNetworkFromAddress(item) || normalizedPreferred
           ),
         };
@@ -87,7 +77,7 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
 
       if (!item || typeof item.address !== 'string') return null;
 
-      const network = normalizeWalletNetwork(
+      const network = networkIdOf(
         item.network ||
         item.networkId ||
         inferWalletNetworkFromAddress(item.address) ||
@@ -111,14 +101,14 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
 };
 
 const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwork) => {
-  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedPreferred = networkIdOf(preferredNetwork);
   const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
     .map((item) => {
       if (typeof item === 'string') {
         return {
           address: item,
           pubkey: null,
-          network: normalizeWalletNetwork(
+          network: networkIdOf(
             inferWalletNetworkFromAddress(item) || normalizedPreferred
           ),
         };
@@ -129,7 +119,7 @@ const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwor
       return {
         address: item.address,
         pubkey: item.pubkey || item.publicKey || null,
-        network: normalizeWalletNetwork(
+        network: networkIdOf(
           item.network ||
           item.networkId ||
           inferWalletNetworkFromAddress(item.address) ||
@@ -141,7 +131,7 @@ const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwor
 
   const activeEntries = Object.entries(activeAccounts || {})
     .map(([network, address]) => ({
-      network: normalizeWalletNetwork(network),
+      network: networkIdOf(network),
       address,
     }))
     .filter((entry) => typeof entry.address === 'string' && entry.address.length > 0);

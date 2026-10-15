@@ -1,3 +1,5 @@
+import { networkIdOf } from '../lib/networks.js';
+
 const CHANNEL = 'tradelayer-provider';
 const SITE_PERMISSIONS_KEY = 'sitePermissionsV1';
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
@@ -79,18 +81,6 @@ const removeWindow = (windowId) =>
       resolve();
     });
   });
-
-const normalizeNetworkId = (network) => {
-  const value = String(network || 'LTC').trim().toUpperCase();
-
-  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
-  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
-  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
-  if (value === 'TESTNET') return 'LTCTEST';
-  if (value === 'LTC' || value === 'LTCTEST') return value;
-
-  return value;
-};
 
 const getSenderOrigin = (sender) => {
   const candidate =
@@ -209,13 +199,13 @@ const normalizeStoredAddressRecord = (item) => {
     return {
       address: item,
       pubkey: null,
-      network: normalizeNetworkId(inferNetworkFromAddress(item)),
+      network: networkIdOf(inferNetworkFromAddress(item)),
     };
   }
 
   if (!item || typeof item.address !== 'string') return null;
 
-  const network = normalizeNetworkId(
+  const network = networkIdOf(
     item.network ||
     item.networkId ||
     inferNetworkFromAddress(item.address)
@@ -230,7 +220,7 @@ const normalizeStoredAddressRecord = (item) => {
 };
 
 const grantSitePermission = async (origin, network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const permissions = await getSitePermissions();
   const approvedNetworks = Array.isArray(permissions[origin]) ? permissions[origin] : [];
 
@@ -243,7 +233,7 @@ const grantSitePermission = async (origin, network) => {
 };
 
 const resolveApprovedNetwork = async (origin, network) => {
-  const requested = network ? normalizeNetworkId(network) : null;
+  const requested = network ? networkIdOf(network) : null;
   const approvedNetworks = await getApprovedNetworks(origin);
 
   if (requested) {
@@ -261,7 +251,7 @@ const resolveApprovedNetwork = async (origin, network) => {
 };
 
 const getAddressesForNetwork = async (network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const { addresses = [], [ACTIVE_ACCOUNTS_KEY]: activeAccounts = {} } = await storageGet([
     'addresses',
     ACTIVE_ACCOUNTS_KEY,
@@ -287,7 +277,7 @@ const getAddressesForNetwork = async (network) => {
 };
 
 const getPreferredLegacyNetwork = async (network) => {
-  if (network) return normalizeNetworkId(network);
+  if (network) return networkIdOf(network);
 
   const { addresses = [] } = await storageGet(['addresses']);
   const normalizedAccounts = (addresses || [])
@@ -318,7 +308,7 @@ const resolveRequestNetwork = async (origin, params) => {
 };
 
 const getExistingMultisig = async (m, pubkeys, network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const { multisigs = [] } = await storageGet(['multisigs']);
 
   return (multisigs || []).find(
@@ -328,7 +318,7 @@ const getExistingMultisig = async (m, pubkeys, network) => {
       item.pubkeys.length === pubkeys.length &&
       item.pubkeys.every((pubkey, index) => pubkey === pubkeys[index]) &&
       typeof item.address === 'string' &&
-      normalizeNetworkId(item.network || inferNetworkFromAddress(item.address)) === normalized
+      networkIdOf(item.network || inferNetworkFromAddress(item.address)) === normalized
   );
 };
 
@@ -465,7 +455,7 @@ const dispatchPendingRequestToPopup = async (requestId) => {
 };
 
 const handleConnect = async (requestId, context, params, sendResponse) => {
-  const network = normalizeNetworkId(params?.network);
+  const network = networkIdOf(params?.network);
   const approvedNetworks = await getApprovedNetworks(context.origin);
   debugLog('connect state', { origin: context.origin, network, approvedNetworks });
 

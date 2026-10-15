@@ -1,9 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const esbuild = require('esbuild');
 
 const ROOT = path.resolve(__dirname, '..');
-const source = fs.readFileSync(path.join(ROOT, 'background', 'background.js'), 'utf8');
+// The worker imports the shared network table, so it is bundled the way the build ships it.
+const source = esbuild.buildSync({
+  entryPoints: [path.join(ROOT, 'background', 'background.js')],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  write: false,
+}).outputFiles[0].text;
 const origin = 'https://layerwallet.com';
 const popupUrl = 'chrome-extension://unit/popup/popup.html';
 const accounts = [{
@@ -341,6 +349,20 @@ const main = async () => {
   }
   if (connectResponses[0]?.success !== false) {
     throw new Error(`The waiting connect request was not answered after the failed approval: ${JSON.stringify(connectResponses)}`);
+  }
+
+  // Network aliases name one network everywhere: each spelling a wallet accepts resolves to it.
+  storage.addresses.push({ address: 'DDummyDogecoinAddress00000000000000', pubkey: null, network: 'DOGE' });
+  storage.sitePermissionsV1 = { [origin]: ['LTCTEST', 'DOGE'] };
+  for (const alias of ['tltc', 'TESTNET', 'litecoin-testnet']) {
+    const response = await send(providerRequest(`alias-${alias}`, 'requestAccounts', { network: alias }), pageSender);
+    if (response?.success !== true || response.result?.[0]?.address !== accounts[0].address) {
+      throw new Error(`Network alias ${alias} did not resolve to LTCTEST: ${JSON.stringify(response)}`);
+    }
+  }
+  const dogeResponse = await send(providerRequest('alias-dogecoin', 'requestAccounts', { network: 'dogecoin' }), pageSender);
+  if (dogeResponse?.success !== true || dogeResponse.result?.[0]?.network !== 'DOGE') {
+    throw new Error(`Network alias dogecoin did not resolve to DOGE: ${JSON.stringify(dogeResponse)}`);
   }
 
   console.log('[unit] background permission smoke test passed');

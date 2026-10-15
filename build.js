@@ -23,6 +23,7 @@ const PACKAGE_PATHS = [
   'contentScript.js',
   'dist',
   'images',
+  'lib/networks.js',
   'options.html',
   'popup',
   'readyPromise.js',

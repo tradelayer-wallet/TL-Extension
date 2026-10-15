@@ -392,6 +392,34 @@ const makeStorage = () => {
       );
     }
 
+    // --- 4g1. derivation paths are written once, in lib/networks.js ---
+    {
+      const pathLiterals = [];
+      const walkPaths = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            walkPaths(full);
+          } else if (entry.name.endsWith('.js') && entry.name !== 'bitcoinjs-lib.js') {
+            fs.readFileSync(full, 'utf8')
+              .split('\n')
+              .forEach((line, index) => {
+                if (/m\/(44|84)'\//.test(line)) pathLiterals.push(`${path.relative(ROOT, full)}:${index + 1}`);
+              });
+          }
+        }
+      };
+      for (const dir of ['lib', 'components', 'popup', 'background', 'store']) {
+        walkPaths(path.join(ROOT, dir));
+      }
+      assert.deepEqual(
+        pathLiterals.filter((line) => !line.startsWith('lib/networks.js:')),
+        [],
+        'derivation paths must come only from DERIVATION_PATHS in lib/networks.js'
+      );
+    }
+
     // --- 4g2. the send form checks the password exactly as setup and unlock stored it ---
     {
       const sendSource = fs.readFileSync(path.join(ROOT, 'components', 'Send.js'), 'utf8');

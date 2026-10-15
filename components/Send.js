@@ -30,18 +30,19 @@ const Send = () => {
   };
 
   const onSend = async () => {
-    let password = passwordRef.current?.value.trim();
+    // The password is used exactly as typed, as setup and unlock store it.
+    let password = passwordRef.current?.value;
     passwordRef.current.value =''
     if (!password) {
       alert('Please enter a password');
       return;
     }
 
-    /*const isValidPassword = await checkPassword(password);
+    const isValidPassword = await checkPassword(password);
     if (!isValidPassword) {
       alert('Invalid password');
       return;
-    }*/
+    }
 
     if (!toAddress || !amount) {
       alert('Please fill in both fields.');

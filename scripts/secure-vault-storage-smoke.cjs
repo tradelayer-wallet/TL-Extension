@@ -392,6 +392,20 @@ const makeStorage = () => {
       );
     }
 
+    // --- 4g2. the send form checks the password exactly as setup and unlock stored it ---
+    {
+      const sendSource = fs.readFileSync(path.join(ROOT, 'components', 'Send.js'), 'utf8');
+      assert.equal(
+        /\.trim\(\)/.test(sendSource),
+        false,
+        'Send.js must not trim the password: setup and unlock keep it as typed'
+      );
+      assert.ok(
+        /^\s*const isValidPassword = await checkPassword\(password\);/m.test(sendSource),
+        'Send.js must check the password before it signs'
+      );
+    }
+
     // --- 4h. a restore from .bak never overwrites the only good copy in .prev ---
     {
       // State left by an interrupted rollback: the live seed is unreadable and

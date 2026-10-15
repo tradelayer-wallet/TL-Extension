@@ -350,7 +350,7 @@ const makeStorage = () => {
     {
       const { map } = useStorage();
       map.set('encryptedSeed', await vault.encryptWithPassword(SEED, 'pw-derive-5'));
-      const ltcCacheKey = 'encryptedPrivateKey:LTC:m_84_2_0_0_0'; // networkPaths.LTC
+      const ltcCacheKey = 'encryptedPrivateKey:LTC:m_84_2_0_0_0'; // DERIVATION_PATHS.LTC
       const cached = await wallet.getOrDeriveKeyPair('pw-derive-5', 'LTC');
       assert.equal(map.get(ltcCacheKey), cached, 'the derived key is cached under the network label');
       const keyBytes = Buffer.from(await vault.decryptWithPassword(cached, 'pw-derive-5', 'privateKey'), 'base64');

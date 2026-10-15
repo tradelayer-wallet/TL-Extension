@@ -2,10 +2,11 @@ import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
 import {
-  decryptWithPasswordInfo,
+  openLiveSeed,
   checkNewPasswordPolicy,
   replaceStoredBlob,
   PLAINTEXT_KIND,
+  SEED_STORAGE_KEY,
 } from '../lib/secureVault';
 
 const ResetPassword = () => {
@@ -18,13 +19,6 @@ const ResetPassword = () => {
 
   const handlePasswordReset = async () => {
     try {
-      const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
-
-      if (!encryptedSeed) {
-        alert('Encrypted seed not found.');
-        return;
-      }
-
       // Get current, new, and confirm new passwords from refs
       const currentPassword = currentPasswordRef.current.value;
       const newPassword = newPasswordRef.current.value;
@@ -48,10 +42,9 @@ const ResetPassword = () => {
       // Decrypt the seed phrase using the current password (throws on mismatch;
       // the plaintext must be a valid BIP39 mnemonic — accepts both v2 vault
       // blobs and legacy CryptoJS blobs)
-      let decrypted;
+      let opened;
       try {
-        const info = await decryptWithPasswordInfo(encryptedSeed, currentPassword, PLAINTEXT_KIND.SEED);
-        decrypted = info.plaintext;
+        opened = await openLiveSeed(currentPassword);
       } catch (error) {
         alert('Incorrect current password. Please try again.');
         return;
@@ -62,8 +55,8 @@ const ResetPassword = () => {
       // keeps the old ciphertext as a backup, and only keeps the new one once it
       // decrypts back. It throws, and changes nothing, if the stored seed
       // changed meanwhile or a cache could not be removed.
-      await replaceStoredBlob('encryptedSeed', encryptedSeed, decrypted, newPassword, PLAINTEXT_KIND.SEED);
-      decrypted = null;
+      await replaceStoredBlob(SEED_STORAGE_KEY, opened.blob, opened.plaintext, newPassword, PLAINTEXT_KIND.SEED);
+      opened = null;
 
       // Clear password refs
       currentPasswordRef.current.value = '';

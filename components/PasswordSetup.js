@@ -3,10 +3,11 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you have an action to set the password
 import { setStep } from '../store/store';
 import {
-  decryptWithPasswordInfo,
+  openLiveSeed,
   checkNewPasswordPolicy,
   replaceStoredBlob,
   PLAINTEXT_KIND,
+  SEED_STORAGE_KEY,
 } from '../lib/secureVault';
 
 const PasswordSetup = () => {
@@ -26,7 +27,7 @@ const PasswordSetup = () => {
         return;
       }
       setConfirmationPasswordValue('')    
-      const encryptedSeed = localStorage.getItem('encryptedSeed');
+      const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
 
       // If there's no encrypted seed, encrypt the seedPhrase and store it
       if (!encryptedSeed || encryptedSeed.length === 0) {
@@ -45,12 +46,12 @@ const PasswordSetup = () => {
 
         // Store the seed as a v2 vault blob. replaceStoredBlob only keeps it
         // after it decrypts back to the seed phrase under this password.
-        await replaceStoredBlob('encryptedSeed', null, seedPhrase, password, PLAINTEXT_KIND.SEED);
+        await replaceStoredBlob(SEED_STORAGE_KEY, null, seedPhrase, password, PLAINTEXT_KIND.SEED);
       } else {
         // An existing seed: the password must open it (the plaintext must be a
         // valid BIP39 mnemonic).
         try {
-          await decryptWithPasswordInfo(encryptedSeed, password, PLAINTEXT_KIND.SEED);
+          await openLiveSeed(password);
         } catch (error) {
           setPasswordValue('')
           alert('Incorrect password. Please try again.');

@@ -22,7 +22,7 @@ import ResetPass from '../components/ResetPass';
 import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
-import { restoreFromBackup } from '../lib/secureVault';
+import { restoreFromBackup, SEED_STORAGE_KEY } from '../lib/secureVault';
 import { senderClass } from '../lib/senders';
 import { networkIdOf } from '../lib/networks';
 import {
@@ -46,7 +46,7 @@ import {
 // 'prev' after an interrupted password change). The slot's blob is verified
 // before it replaces encryptedSeed, and the blob it displaces is kept in .prev.
 window.restoreSeedFromBackup = (password, source = 'bak') =>
-  restoreFromBackup('encryptedSeed', password, undefined, source);
+  restoreFromBackup(SEED_STORAGE_KEY, password, undefined, source);
 
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
@@ -311,7 +311,7 @@ const App = () => {
       });
     }
 
-    const encryptedSeed = localStorage.getItem('encryptedSeed');
+    const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
     if (stepParam) {
       dispatch(setStep(parseInt(stepParam, 10)));
     } else {

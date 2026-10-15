@@ -7,7 +7,7 @@
 //   unlock(X)      PasswordPrompt.js: generateAddressFromSeed (migrates a legacy
 //                  seed), then clearPrivateKeyCaches, after success only
 //   expose(X)      ExposeSeed.js: decrypt, then maybeUpgradeStoredBlob if legacy
-//   sign(X)        the signing UI: checkPasswordMatch, then getSigningKeyBase64
+//   sign(X)        the signing UI: liveSeedOpensUnder, then getSigningKeyBase64
 //                  (reads, derives, stores and migrates the key cache)
 //   sign-raw(X)    getSigningKeyBase64 without the UI's password gate
 //   reset(X->Y)    ResetPass.js: decrypt with X, replaceStoredBlob(seed, ..., Y)
@@ -332,7 +332,7 @@ async function explore({ vault, wallet }) {
       await vault.replaceStoredBlob(SEED_KEY, null, SEED, password, SEED_KIND);
       return 'ok';
     }
-    await vault.decryptWithPasswordInfo(enc, password, SEED_KIND);
+    await vault.openLiveSeed(password);
     return 'checked';
   };
   // PasswordPrompt.js: unlock, then the best-effort sweep on success.
@@ -343,16 +343,15 @@ async function explore({ vault, wallet }) {
   };
   // ExposeSeed.js: decrypt, migrate a legacy blob.
   const exposeFlow = async (password) => {
-    const enc = localStorage.getItem(SEED_KEY);
-    const { plaintext, legacy } = await vault.decryptWithPasswordInfo(enc, password, SEED_KIND);
+    const { blob, plaintext, legacy } = await vault.openLiveSeed(password);
     if (legacy) {
-      await vault.maybeUpgradeStoredBlob(SEED_KEY, enc, plaintext, password, SEED_KIND);
+      await vault.maybeUpgradeStoredBlob(SEED_KEY, blob, plaintext, password, SEED_KIND);
     }
     return 'ok';
   };
   // The signing UI checks the password against the live seed first.
   const signFlow = async (password, network = 'LTC') => {
-    if (!(await wallet.checkPasswordMatch(password))) {
+    if (!(await vault.liveSeedOpensUnder(password))) {
       throw new Error('Incorrect password.');
     }
     await wallet.getSigningKeyBase64(password, network);
@@ -364,16 +363,14 @@ async function explore({ vault, wallet }) {
   };
   // ResetPass.js
   const resetFlow = async (from, to) => {
-    const enc = localStorage.getItem(SEED_KEY);
-    if (!enc) throw new Error('Encrypted seed not found.');
-    let decrypted;
+    let opened;
     try {
-      decrypted = (await vault.decryptWithPasswordInfo(enc, from, SEED_KIND)).plaintext;
+      opened = await vault.openLiveSeed(from);
     } catch (_) {
       throw new Error('Incorrect current password.');
     }
-    await vault.replaceStoredBlob(SEED_KEY, enc, decrypted, to, SEED_KIND);
-    decrypted = null;
+    await vault.replaceStoredBlob(SEED_KEY, opened.blob, opened.plaintext, to, SEED_KIND);
+    opened = null;
     return 'ok';
   };
   // popup.js restoreSeedFromBackup -> restoreFromBackup

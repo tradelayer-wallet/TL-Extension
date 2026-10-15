@@ -429,7 +429,7 @@ const makeStorage = () => {
         'Send.js must not trim the password: setup and unlock keep it as typed'
       );
       assert.ok(
-        /^\s*const isValidPassword = await checkPassword\(password\);/m.test(sendSource),
+        /^\s*const isValidPassword = await liveSeedOpensUnder\(password\);/m.test(sendSource),
         'Send.js must check the password before it signs'
       );
     }

@@ -2,7 +2,7 @@ import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
 import { generateAddressFromSeed, clearPrivateKeyCaches } from '../lib/walletUtils';
-import { isLegacyVaultBlob } from '../lib/secureVault';
+import { isLegacyVaultBlob, SEED_STORAGE_KEY } from '../lib/secureVault';
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
 
@@ -21,7 +21,7 @@ const PasswordPrompt = () => {
   const handlePasswordSubmit = async () => {
     let password = passwordRef.current.value;
     passwordRef.current.value = '';
-    const encryptedSeed = localStorage.getItem('encryptedSeed');
+    const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
     // An empty password is only accepted for legacy CryptoJS blobs: the
     // pre-PR setup flow allowed empty passwords, and those users must be able
     // to unlock (and then set a real password). v2 blobs can never have one.

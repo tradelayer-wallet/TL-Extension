@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setPSBTToSign, setSignRequest, setStep } from '../store/store';
-import { checkPasswordMatch, signInputsInPsbt, summarizePsbtForDisplay } from '../lib/walletUtils';
+import { signInputsInPsbt, summarizePsbtForDisplay } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const formatLtc = (sats) => (typeof sats === 'number' ? (sats / 1e8).toFixed(8) : 'unknown');
 
@@ -107,7 +108,7 @@ const SignPSBT = () => {
       return;
     }
 
-    const validPassword = await checkPasswordMatch(password, network, address);
+    const validPassword = await liveSeedOpensUnder(password);
     if (!validPassword) {
       alert('Invalid password');
       return;

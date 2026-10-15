@@ -379,6 +379,40 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
     );
     assert.equal(store.get('encryptedSeed'), emptyPwBlob, 'the legacy blob must stay in place');
 
+    // --- the live seed is opened in one place, under the password as given ---
+    {
+      const seedStore = new Map();
+      globalThis.localStorage = {
+        getItem: (key) => (seedStore.has(key) ? seedStore.get(key) : null),
+        setItem: (key, value) => seedStore.set(key, String(value)),
+        removeItem: (key) => seedStore.delete(key),
+      };
+      const password = 'correct horse battery staple';
+      assert.equal(await vault.liveSeedOpensUnder(password), false, 'no stored seed opens under no password');
+      await assert.rejects(() => vault.openLiveSeed(password), /Failed to decrypt/);
+
+      const v2 = await encryptWithPassword(plaintext, password);
+      seedStore.set('encryptedSeed', v2);
+      const opened = await vault.openLiveSeed(password);
+      assert.equal(opened.plaintext, plaintext);
+      assert.equal(opened.blob, v2, 'the stored blob is returned for compare-and-swap writes');
+      assert.equal(opened.legacy, false);
+      assert.equal(await vault.liveSeedOpensUnder(password), true);
+      assert.equal(await vault.liveSeedOpensUnder('wrong password here'), false);
+
+      seedStore.set('encryptedSeed', legacyBlob);
+      const legacy = await vault.openLiveSeed('old password');
+      assert.equal(legacy.legacy, true, 'a legacy blob is reported so the caller can upgrade it');
+      assert.equal(legacy.blob, legacyBlob);
+      await assert.rejects(() => vault.openLiveSeed('not the password'), /Failed to decrypt/);
+
+      // A password is compared exactly as given, including surrounding spaces.
+      const spaced = await encryptWithPassword(plaintext, ' spaced password ');
+      seedStore.set('encryptedSeed', spaced);
+      assert.equal((await vault.openLiveSeed(' spaced password ')).plaintext, plaintext);
+      await assert.rejects(() => vault.openLiveSeed('spaced password'), /Failed to decrypt/);
+    }
+
     console.log('[unit] secure vault smoke test passed');
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });

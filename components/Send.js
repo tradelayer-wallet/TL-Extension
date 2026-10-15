@@ -3,7 +3,8 @@ import React, { useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import { setStep, setTxid } from '../store/store'; // Add setTxid to Redux actions
-import { checkPasswordMatch, signTransaction } from '../lib/walletUtils';
+import { signTransaction } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const Send = () => {
   const [toAddress, setAddress] = useState('');
@@ -17,18 +18,6 @@ const Send = () => {
 
   const onBack = () => dispatch(setStep(7)); // Go back to previous page
 
-  const checkPassword = async (password) => {
-    try {
-      const encryptedSeed = localStorage.getItem('encryptedSeed');
-      if (!encryptedSeed) return false;
-      console.log('Checking password for network:', network);
-      return await checkPasswordMatch(password, network, fromAddress);
-    } catch (error) {
-      console.error('Error in password check:', error);
-      return false;
-    }
-  };
-
   const onSend = async () => {
     // The password is used exactly as typed, as setup and unlock store it.
     let password = passwordRef.current?.value;
@@ -38,7 +27,7 @@ const Send = () => {
       return;
     }
 
-    const isValidPassword = await checkPassword(password);
+    const isValidPassword = await liveSeedOpensUnder(password);
     if (!isValidPassword) {
       alert('Invalid password');
       return;

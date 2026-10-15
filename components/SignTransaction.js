@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setMessageToSign, setSignRequest, setStep, setTxToSign } from '../store/store';
-import { checkPasswordMatch, signMessage, signTransaction } from '../lib/walletUtils';
+import { signMessage, signTransaction } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const SignTransaction = () => {
   const dispatch = useDispatch();
@@ -12,14 +13,6 @@ const SignTransaction = () => {
   const requestId = useSelector((state) => state.id);
   const requestOrigin = useSelector((state) => state.requestOrigin);
   const txToSign = useSelector((state) => state.tx);
-
-  const checkPassword = async (password) => {
-    try {
-      return await checkPasswordMatch(password, network, address);
-    } catch {
-      return false;
-    }
-  };
 
   const reject = async (reason = 'User rejected the signing request.') => {
     if (requestId) {
@@ -43,7 +36,7 @@ const SignTransaction = () => {
       return;
     }
 
-    const valid = await checkPassword(password);
+    const valid = await liveSeedOpensUnder(password);
     if (!valid) {
       alert('Invalid password');
       return;

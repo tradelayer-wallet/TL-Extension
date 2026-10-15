@@ -202,6 +202,29 @@ test('PSBT: a UTXO script that does not commit to the witness script is refused,
   assert.equal(signed.success, true);
 });
 
+test('PSBT: a witness script already present in the PSBT still needs a UTXO script that commits to it', async () => {
+  useKey();
+  const witnessScript = bitcoin.script.compile([
+    bitcoin.opcodes.OP_2,
+    Buffer.from(user.publicKey),
+    Buffer.from(other.publicKey),
+    bitcoin.opcodes.OP_2,
+    bitcoin.opcodes.OP_CHECKMULTISIG,
+  ]);
+  const psbt = new bitcoin.Psbt({ network: LTCTEST });
+  psbt.addInput({
+    hash: Buffer.alloc(32, 9),
+    index: 0,
+    witnessUtxo: { script: p2wpkhScript(attacker), value: 100000n },
+    witnessScript,
+  });
+  psbt.addOutput({ address: p2wpkhAddress(recipient), value: 90000n });
+  await expectRefusal(
+    wallet.signInputsInPsbt(psbt.toHex(), 'LTCTEST', 'pw', true, Buffer.from(witnessScript).toString('hex')),
+    /does not match the witness script/
+  );
+});
+
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const popupUrl = 'chrome-extension://ext/popup/popup.html';

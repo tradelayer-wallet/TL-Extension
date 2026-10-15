@@ -260,6 +260,34 @@ test('trade PSBT: amounts convert to whole satoshis exactly, as the UTXO and the
   assert.equal(Number(withData.txOutputs[2].value), 0, 'the payload output carries no value');
 });
 
+test('approval summary: an input given as a full previous transaction shows its address and value', () => {
+  // A PSBT input may name its UTXO by the whole previous transaction instead of witnessUtxo.
+  // The approval screen must show that value, and must not trust a previous transaction that
+  // does not hash to the outpoint the input spends.
+  const prev = new bitcoin.Transaction();
+  prev.version = 2;
+  prev.addInput(Buffer.alloc(32, 3), 0);
+  prev.addOutput(p2wpkhScript(user), 29_000_000n);
+  const good = new bitcoin.Psbt({ network: LTCTEST });
+  good.addInput({ hash: prev.getHash(), index: 0, nonWitnessUtxo: prev.toBuffer() });
+  good.addOutput({ address: p2wpkhAddress(recipient), value: 28_900_000n });
+  const shown = wallet.summarizePsbtForDisplay(good.toHex(), 'LTCTEST', []);
+  assert.equal(shown.inputs[0].valueSats, 29_000_000, 'the spent value is shown');
+  assert.equal(shown.inputs[0].address, p2wpkhAddress(user), 'the spent address is shown');
+  assert.equal(shown.feeSats, 100_000);
+
+  const other = new bitcoin.Transaction();
+  other.version = 2;
+  other.addInput(Buffer.alloc(32, 4), 0);
+  other.addOutput(p2wpkhScript(attacker), 1_000_000_000n);
+  const forged = new bitcoin.Psbt({ network: LTCTEST });
+  forged.addInput({ hash: prev.getHash(), index: 0, nonWitnessUtxo: other.toBuffer() });
+  forged.addOutput({ address: p2wpkhAddress(recipient), value: 28_900_000n });
+  const hidden = wallet.summarizePsbtForDisplay(forged.toHex(), 'LTCTEST', []);
+  assert.equal(hidden.inputs[0].valueSats, null, 'a previous transaction that is not the outpoint is not trusted');
+  assert.equal(hidden.inputs[0].address, null);
+});
+
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const popupUrl = 'chrome-extension://ext/popup/popup.html';

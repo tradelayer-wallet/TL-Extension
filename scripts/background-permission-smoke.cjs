@@ -112,6 +112,12 @@ const providerRequest = (id, method, params = {}) => ({
   data: { id, method, params },
 });
 
+const settle = async (done) => {
+  for (let attempt = 0; attempt < 50 && !done(); attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
+
 const expectFailure = async (label, request, pattern, sender = pageSender) => {
   const response = await send(request, sender);
   if (response?.success !== false || !pattern.test(response.error || '')) {
@@ -288,6 +294,53 @@ const main = async () => {
   );
   if (rejected?.success !== true || signResponse?.success !== false) {
     throw new Error('Approved legacy sign request did not remain pending for popup approval.');
+  }
+
+  await expectFailure(
+    'page sender cannot approve a connect request',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    pageSender
+  );
+
+  // A request id reused by the same page is refused, and must not cancel the request that owns the id.
+  const firstResponses = [];
+  const windowsBeforeDuplicate = createdWindows;
+  listener(providerRequest('dup-id', 'signMessage', { network: 'LTCTEST', message: 'first' }), pageSender, (response) => {
+    firstResponses.push(response);
+  });
+  await settle(() => createdWindows > windowsBeforeDuplicate);
+  await expectFailure(
+    'duplicate request id',
+    providerRequest('dup-id', 'signMessage', { network: 'LTCTEST', message: 'second' }),
+    /Duplicate request id/
+  );
+  const cancelled = await send({ method: 'rejectPendingRequest', payload: { requestId: 'dup-id', reason: 'smoke dup' } }, popupSender);
+  if (cancelled?.success !== true) {
+    throw new Error(`A duplicate request id removed the pending request it duplicated: ${JSON.stringify(cancelled)}`);
+  }
+  await settle(() => firstResponses.length > 0);
+  if (firstResponses[0]?.success !== false || !/smoke dup/.test(firstResponses[0].error || '')) {
+    throw new Error(`The original request was not answered by its rejection: ${JSON.stringify(firstResponses)}`);
+  }
+
+  // An approval that cannot produce accounts grants nothing and answers the waiting page.
+  const connectResponses = [];
+  const windowsBeforeConnect = createdWindows;
+  listener(providerRequest('connect-no-ltc', 'connect', { network: 'LTC' }), pageSender, (response) => {
+    connectResponses.push(response);
+  });
+  await settle(() => createdWindows > windowsBeforeConnect);
+  await send(
+    { method: 'approvalDecision', payload: { requestId: 'connect-no-ltc', approved: true } },
+    popupSender
+  );
+  await settle(() => connectResponses.length > 0);
+  if (storage.sitePermissionsV1[origin].includes('LTC')) {
+    throw new Error('An approval with no LTC account still granted LTC to the origin.');
+  }
+  if (connectResponses[0]?.success !== false) {
+    throw new Error(`The waiting connect request was not answered after the failed approval: ${JSON.stringify(connectResponses)}`);
   }
 
   console.log('[unit] background permission smoke test passed');

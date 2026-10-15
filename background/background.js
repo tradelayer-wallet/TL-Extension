@@ -653,11 +653,13 @@ const handleProviderRequest = async (message, sender, sendResponse) => {
     }
   } catch (error) {
     respondError(sendResponse, error);
-    if (pendingRequests.has(requestId)) {
+    // Only the request that owns the pending entry may tear it down. A reused id
+    // must not cancel the request it duplicates.
+    if (pendingRequests.get(requestId)?.sendResponse === sendResponse) {
       pendingRequests.delete(requestId);
-    }
-    if (popupRequestId === requestId) {
-      await closePopup();
+      if (popupRequestId === requestId) {
+        await closePopup();
+      }
     }
     return true;
   }
@@ -724,8 +726,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
+      // Read the accounts before granting: an approval that cannot produce any
+      // accounts grants nothing, and the waiting page is answered with the reason.
+      const accounts = await getAddressesForNetwork(pending.params.network).catch(async (error) => {
+        await rejectPendingRequest(requestId, error.message);
+        throw error;
+      });
       await grantSitePermission(pending.context.origin, pending.params.network);
-      const accounts = await getAddressesForNetwork(pending.params.network);
 
       await resolvePendingRequest(requestId, accounts);
       sendProviderEvent(pending.context, 'accountsChanged', accounts);

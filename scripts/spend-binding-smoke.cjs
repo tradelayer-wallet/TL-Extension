@@ -290,12 +290,16 @@ test('approval summary: an input given as a full previous transaction shows its 
 
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
+  const runtime = { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}` };
   const popupUrl = 'chrome-extension://ext/popup/popup.html';
-  assert.equal(senderClass({ id: 'ext', url: `${popupUrl}?step=13` }, 'ext', popupUrl), 'popup');
-  assert.equal(senderClass({ id: 'ext', url: 'chrome-extension://ext/background/background.js' }, 'ext', popupUrl), 'extension');
-  assert.equal(senderClass({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, 'ext', popupUrl), 'page');
-  assert.equal(senderClass({ id: 'other', url: popupUrl }, 'ext', popupUrl), 'foreign');
-  assert.equal(senderClass(undefined, 'ext', popupUrl), 'foreign');
+  assert.equal(senderClass({ id: 'ext', url: `${popupUrl}?step=13` }, runtime), 'popup');
+  assert.equal(senderClass({ id: 'ext', tab: { id: 9 }, url: `${popupUrl}?step=13` }, runtime), 'popup', 'the approval window has a tab');
+  assert.equal(senderClass({ id: 'ext', url: 'chrome-extension://ext/background/background.js' }, runtime), 'extension');
+  assert.equal(senderClass({ id: 'ext', tab: { id: 3 }, url: 'chrome-extension://ext/options.html' }, runtime), 'extension');
+  assert.equal(senderClass({ id: 'ext', tab: { id: 3 }, url: 'https://layerwallet.com/' }, runtime), 'page');
+  assert.equal(senderClass({ id: 'other', url: popupUrl }, runtime), 'foreign');
+  assert.equal(senderClass({ origin: 'https://layerwallet.com', url: 'https://layerwallet.com/', tab: { id: 4 } }, runtime), 'foreign');
+  assert.equal(senderClass(undefined, runtime), 'foreign');
 });
 
 test('legacy transfer: two selected UTXOs from the wallet address, change returns to the wallet (honest)', async () => {

@@ -165,7 +165,7 @@ const App = () => {
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
       // Only the extension's own pages and service worker may drive this popup.
-      const fromExtension = senderClass(sender, chrome.runtime.id, chrome.runtime.getURL('popup/popup.html'));
+      const fromExtension = senderClass(sender, chrome.runtime);
       if (fromExtension !== 'popup' && fromExtension !== 'extension') {
         return false;
       }

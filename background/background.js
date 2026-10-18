@@ -683,7 +683,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (
     ['popupReady', 'approvalDecision', 'signMessageResponse', 'signTxResponse', 'addMultisigResponse', 'rejectPendingRequest'].includes(message.method) &&
-    senderClass(sender, chrome.runtime.id, chrome.runtime.getURL('popup/popup.html')) !== 'popup'
+    senderClass(sender, chrome.runtime) !== 'popup'
   ) {
     respondError(sendResponse, 'Popup-only method called from an invalid sender.');
     return true;

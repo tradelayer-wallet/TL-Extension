@@ -110,7 +110,12 @@ const untrustedSender = {
   tab: { id: 2 },
   frameId: 0,
 };
-const popupSender = { id: 'unit', url: `${popupUrl}?step=13&message=unit-sign` };
+// The approval window is a popup window: Chrome gives its page a tab and the extension's own URL.
+const popupSender = { id: 'unit', url: `${popupUrl}?step=13&message=unit-sign`, tab: { id: 9 }, frameId: 0 };
+// The toolbar popup is not in a tab.
+const toolbarPopupSender = { id: 'unit', url: popupUrl };
+// A web page that messages the extension through externally_connectable has no extension id.
+const externalPageSender = { origin, url: `${origin}/provider-smoke`, tab: { id: 4 }, frameId: 0 };
 
 const send = (message, sender = pageSender) => new Promise((resolve) => {
   listener(message, sender, resolve);
@@ -324,6 +329,32 @@ const main = async () => {
     /invalid sender/,
     pageSender
   );
+  await expectFailure(
+    'external web page cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    externalPageSender
+  );
+
+  // The toolbar popup has no tab, and approves a request the same way the approval window does.
+  let toolbarSignResponse;
+  const windowsBeforeToolbar = createdWindows;
+  listener(providerRequest('toolbar-sign', 'signMessage', { network: 'LTCTEST', message: 'toolbar' }), pageSender, (response) => {
+    toolbarSignResponse = response;
+  });
+  await settle(() => createdWindows > windowsBeforeToolbar);
+  const toolbarReady = await send({ method: 'popupReady', payload: { requestId: 'toolbar-sign' } }, toolbarPopupSender);
+  if (toolbarReady?.success !== true) {
+    throw new Error(`The toolbar popup could not reach a pending request: ${JSON.stringify(toolbarReady)}`);
+  }
+  const toolbarRejected = await send(
+    { method: 'rejectPendingRequest', payload: { requestId: 'toolbar-sign', reason: 'smoke toolbar' } },
+    toolbarPopupSender
+  );
+  if (toolbarRejected?.success !== true) {
+    throw new Error(`The toolbar popup could not reject a pending request: ${JSON.stringify(toolbarRejected)}`);
+  }
+  await settle(() => toolbarSignResponse);
 
   // A request id reused by the same page is refused, and must not cancel the request that owns the id.
   const firstResponses = [];

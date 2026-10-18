@@ -357,6 +357,60 @@ test('PSBT: a P2WSH UTXO with no witnessScript in the PSBT is matched through th
   }
 });
 
+test('legacy transfer: the amount signed is the amount named; a number and its string send the same', async () => {
+  useKey();
+  const sendAmount = async (amount) => {
+    const res = await wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount, inputs: utxos() },
+      'pw',
+      'LTCTEST'
+    );
+    return decodeOutputs(res.data.rawTx)[0].sats;
+  };
+  assert.equal(await sendAmount(0.1), 10_000_000);
+  assert.equal(await sendAmount('0.1'), 10_000_000);
+});
+
+test('legacy transfer: a zero, missing, or non-numeric amount is refused, as a number or a string', async () => {
+  useKey();
+  for (const amount of [0, '0', '', '  ', -1, '-1', NaN, 'NaN', 'LTC', true, null, undefined, Infinity]) {
+    await expectRefusal(
+      wallet.signTransaction(
+        { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount, inputs: utxos() },
+        'pw',
+        'LTCTEST'
+      ),
+      /positive amount/
+    );
+  }
+});
+
+test('legacy transfer: an amount below the dust limit is refused', async () => {
+  useKey();
+  await expectRefusal(
+    wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 1e-9, inputs: utxos() },
+      'pw',
+      'LTCTEST'
+    ),
+    /dust/
+  );
+});
+
+test('legacy transfer: change below the dust limit is not added as an output (it is the fee)', async () => {
+  useKey();
+  // 0.100003 LTC in, 0.0999 out, 10000 sat fee: 300 sat of change is below the dust limit.
+  const single = [{ txid: '44'.repeat(32), vout: 0, amount: 0.10000300, scriptPubKey: userScriptHex, confirmations: 6 }];
+  const res = await wallet.signTransaction(
+    { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.0999, inputs: single },
+    'pw',
+    'LTCTEST'
+  );
+  const outs = decodeOutputs(res.data.rawTx);
+  assert.equal(outs.length, 1);
+  assert.equal(outs[0].sats, 9_990_000);
+});
+
 (async () => {
   // The PSBT path reads the multisig registry from localStorage. Tests seed it through this map.
   globalThis.localStorage = {

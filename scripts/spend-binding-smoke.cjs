@@ -445,6 +445,16 @@ test('legacy transfer: change below the dust limit is not added as an output (it
   assert.equal(outs[0].sats, 9_990_000);
 });
 
+test('senders: a sender with no url, or a url that does not parse, is foreign, not a page (R13-6)', () => {
+  const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
+  const runtime = { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}` };
+  assert.equal(senderClass({ id: 'ext' }, runtime), 'foreign', 'no url');
+  assert.equal(senderClass({ id: 'ext', origin: 'chrome-extension://ext' }, runtime), 'foreign', 'origin but no url');
+  assert.equal(senderClass({ id: 'ext', url: '' }, runtime), 'foreign', 'empty url');
+  assert.equal(senderClass({ id: 'ext', url: 'layerwallet.com' }, runtime), 'foreign', 'a url that does not parse');
+  assert.equal(senderClass({ id: 'ext', url: 42 }, runtime), 'foreign', 'a url that is not a string');
+});
+
 (async () => {
   // The PSBT path reads the multisig registry from localStorage. Tests seed it through this map.
   globalThis.localStorage = {

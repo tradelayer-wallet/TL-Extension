@@ -310,6 +310,18 @@ test('approval summary: an input whose value the PSBT does not prove makes the t
   assert.equal(partial.feeSats, null);
 });
 
+test('legacy transfer: Dogecoin is refused with the reason, before any key is used', async () => {
+  useKey();
+  await expectRefusal(
+    wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.1, inputs: utxos() },
+      'pw',
+      'DOGETEST'
+    ),
+    /Legacy transfers are not supported on DOGETEST/
+  );
+});
+
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const runtime = { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}` };

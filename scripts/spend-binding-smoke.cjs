@@ -47,6 +47,19 @@ const bundleWalletUtils = async () => {
     nodePaths: [path.join(ROOT, 'node_modules')],
     plugins: [
       {
+        // Nothing in these checks may reach the network: axios (used by fetchUTXOs) is replaced by a
+        // stub that counts its calls and refuses them.
+        name: 'network-blocked',
+        setup(build) {
+          build.onResolve({ filter: /^axios$/ }, () => ({ path: 'axios', namespace: 'network-blocked' }));
+          build.onLoad({ filter: /.*/, namespace: 'network-blocked' }, () => ({
+            contents:
+              "module.exports = { post: async () => { globalThis.__TL_TEST_NETWORK_CALLS = (globalThis.__TL_TEST_NETWORK_CALLS || 0) + 1; throw new Error('network is blocked in this test'); } };",
+            loader: 'js',
+          }));
+        },
+      },
+      {
         name: 'spend-binding-test-seams',
         setup(build) {
           build.onLoad({ filter: /walletUtils\.js$/ }, (args) => {
@@ -445,6 +458,29 @@ test('legacy transfer: change below the dust limit is not added as an output (it
   assert.equal(outs[0].sats, 9_990_000);
 });
 
+test('transfer amounts: only plain decimal text is read as LTC; other spellings are refused, not reinterpreted (R13-7)', () => {
+  for (const text of ['0x10', '0b1', '0o7', '1e3', '1E3', '+1', '-1', '1,5', '1.2.3', '.', '1_000', 'Infinity', 'NaN']) {
+    assert.throws(() => wallet.transferSats(text), /amount/, `"${text}" was accepted`);
+  }
+  assert.equal(wallet.transferSats('0.5'), 50_000_000n);
+  assert.equal(wallet.transferSats(' 0.5 '), 50_000_000n);
+  assert.equal(wallet.transferSats('.5'), 50_000_000n);
+  assert.equal(wallet.transferSats(0.5), 50_000_000n);
+});
+
+test('transfer amounts: a decimal with more than eight places is refused, not rounded to another amount (R13-7)', () => {
+  assert.throws(() => wallet.transferSats('1.000000004'), /decimal places/);
+  assert.throws(() => wallet.transferSats('0.000000001'), /decimal places/);
+  assert.equal(wallet.transferSats('0.00000546'), 546n);
+});
+
+test('approval: the amount line shows the exact satoshis that will be signed, or refuses (R13-7)', () => {
+  assert.equal(wallet.transferAmountLabel('0.5'), '0.5 LTC (50000000 sats)');
+  assert.equal(wallet.transferAmountLabel(' 29 '), '29 LTC (2900000000 sats)');
+  assert.equal(wallet.transferAmountLabel('0.00000546'), '0.00000546 LTC (546 sats)');
+  assert.throws(() => wallet.transferAmountLabel('0x10'), /plain decimal/);
+});
+
 test('senders: a sender with no url, or a url that does not parse, is foreign, not a page (R13-6)', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const runtime = { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}` };
@@ -453,6 +489,34 @@ test('senders: a sender with no url, or a url that does not parse, is foreign, n
   assert.equal(senderClass({ id: 'ext', url: '' }, runtime), 'foreign', 'empty url');
   assert.equal(senderClass({ id: 'ext', url: 'layerwallet.com' }, runtime), 'foreign', 'a url that does not parse');
   assert.equal(senderClass({ id: 'ext', url: 42 }, runtime), 'foreign', 'a url that is not a string');
+});
+
+test('trade PSBT: the amount takes the transfer rule; zero, dust and spelled amounts are refused (R13-8)', () => {
+  const trade = (amount) => wallet.buildUnsignedPSBT({
+    buyerKeyPair: { address: p2wpkhAddress(user) },
+    sellerKeyPair: { address: p2wpkhAddress(recipient) },
+    amount,
+    payload: null,
+    commitUTXOs: [{ txid: '11'.repeat(32), vout: 0, amount: 0.5, scriptPubKey: userScriptHex }],
+    outputs: [],
+    network: 'LTCTEST',
+    sats: 0,
+  });
+  for (const amount of [0, 1e-9, -1, NaN, '0x10']) {
+    let built = null;
+    try {
+      built = trade(amount);
+    } catch {}
+    assert.equal(built, null, `amount ${String(amount)} was built into a PSBT`);
+  }
+  assert.ok(trade(0.29).psbt);
+});
+
+test('sendBTC: the amount takes the transfer rule before any UTXO is fetched (R13-9)', async () => {
+  const before = globalThis.__TL_TEST_NETWORK_CALLS || 0;
+  await expectRefusal(wallet.sendBTC(p2wpkhAddress(user), p2wpkhAddress(recipient), '0x10'), /plain decimal/);
+  await expectRefusal(wallet.sendBTC(p2wpkhAddress(user), p2wpkhAddress(recipient), 1e-9), /dust/);
+  assert.equal(globalThis.__TL_TEST_NETWORK_CALLS || 0, before, 'sendBTC asked the network before checking the amount');
 });
 
 (async () => {

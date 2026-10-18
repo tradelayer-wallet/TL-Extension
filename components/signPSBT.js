@@ -178,6 +178,13 @@ const SignPSBT = () => {
           <p><strong>Total In:</strong> {formatLtc(summary.totalInputSats)} {summary.network}</p>
           <p><strong>Total Out:</strong> {formatLtc(summary.totalOutputSats)} {summary.network}</p>
           <p><strong>Estimated Fee:</strong> {formatLtc(summary.feeSats)} {summary.network}</p>
+          {summary.inputs.map((input) => (
+            <div key={`input-${input.index}`} style={{ marginBottom: '12px' }}>
+              <strong>Input {input.index}</strong>
+              <div>Amount: {formatLtc(input.valueSats)} {summary.network}</div>
+              <div>From: {input.address || 'unknown'}</div>
+            </div>
+          ))}
           {summary.outputs.map((output) => (
             <div key={output.index} style={{ marginBottom: '12px' }}>
               <strong>Output {output.index}</strong>

@@ -288,6 +288,28 @@ test('approval summary: an input given as a full previous transaction shows its 
   assert.equal(hidden.inputs[0].address, null);
 });
 
+test('approval summary: an input whose value the PSBT does not prove makes the totals unknown', () => {
+  // A PSBT input with no witnessUtxo and no previous transaction has no value to show. A total
+  // that leaves it out would look complete, so the totals and the fee are unknown (null) instead.
+  const bare = new bitcoin.Psbt({ network: LTCTEST });
+  bare.addInput({ hash: Buffer.alloc(32, 5), index: 0 });
+  bare.addOutput({ address: p2wpkhAddress(recipient), value: 28_900_000n });
+  const unproven = wallet.summarizePsbtForDisplay(bare.toHex(), 'LTCTEST', []);
+  assert.equal(unproven.inputs[0].valueSats, null);
+  assert.equal(unproven.totalInputSats, null, 'the total in is unknown, not 0');
+  assert.equal(unproven.feeSats, null, 'the fee is unknown, not the outputs');
+  assert.equal(unproven.totalOutputSats, 28_900_000);
+
+  const mixed = new bitcoin.Psbt({ network: LTCTEST });
+  mixed.addInput({ hash: Buffer.alloc(32, 6), index: 0, witnessUtxo: { script: p2wpkhScript(user), value: 29_000_000n } });
+  mixed.addInput({ hash: Buffer.alloc(32, 7), index: 0 });
+  mixed.addOutput({ address: p2wpkhAddress(recipient), value: 28_900_000n });
+  const partial = wallet.summarizePsbtForDisplay(mixed.toHex(), 'LTCTEST', []);
+  assert.equal(partial.inputs[0].valueSats, 29_000_000);
+  assert.equal(partial.totalInputSats, null, 'one unproven input makes the total in unknown');
+  assert.equal(partial.feeSats, null);
+});
+
 test('popup: runtime senders are classified once, and only the popup may approve or sign', () => {
   const { senderClass } = require(path.join(ROOT, 'lib', 'senders.js'));
   const runtime = { id: 'ext', getURL: (file) => `chrome-extension://ext/${file}` };

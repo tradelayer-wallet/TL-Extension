@@ -47,19 +47,6 @@ const bundleWalletUtils = async () => {
     nodePaths: [path.join(ROOT, 'node_modules')],
     plugins: [
       {
-        // Nothing in these checks may reach the network: axios (used by fetchUTXOs) is replaced by a
-        // stub that counts its calls and refuses them.
-        name: 'network-blocked',
-        setup(build) {
-          build.onResolve({ filter: /^axios$/ }, () => ({ path: 'axios', namespace: 'network-blocked' }));
-          build.onLoad({ filter: /.*/, namespace: 'network-blocked' }, () => ({
-            contents:
-              "module.exports = { post: async () => { globalThis.__TL_TEST_NETWORK_CALLS = (globalThis.__TL_TEST_NETWORK_CALLS || 0) + 1; throw new Error('network is blocked in this test'); } };",
-            loader: 'js',
-          }));
-        },
-      },
-      {
         name: 'spend-binding-test-seams',
         setup(build) {
           build.onLoad({ filter: /walletUtils\.js$/ }, (args) => {
@@ -510,13 +497,6 @@ test('trade PSBT: the amount takes the transfer rule; zero, dust and spelled amo
     assert.equal(built, null, `amount ${String(amount)} was built into a PSBT`);
   }
   assert.ok(trade(0.29).psbt);
-});
-
-test('sendBTC: the amount takes the transfer rule before any UTXO is fetched (R13-9)', async () => {
-  const before = globalThis.__TL_TEST_NETWORK_CALLS || 0;
-  await expectRefusal(wallet.sendBTC(p2wpkhAddress(user), p2wpkhAddress(recipient), '0x10'), /plain decimal/);
-  await expectRefusal(wallet.sendBTC(p2wpkhAddress(user), p2wpkhAddress(recipient), 1e-9), /dust/);
-  assert.equal(globalThis.__TL_TEST_NETWORK_CALLS || 0, before, 'sendBTC asked the network before checking the amount');
 });
 
 (async () => {

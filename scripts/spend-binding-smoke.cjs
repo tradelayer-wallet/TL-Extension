@@ -423,11 +423,20 @@ test('legacy transfer: an amount below the dust limit is refused', async () => {
   useKey();
   await expectRefusal(
     wallet.signTransaction(
-      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 1e-9, inputs: utxos() },
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 0.00000545, inputs: utxos() },
       'pw',
       'LTCTEST'
     ),
     /dust/
+  );
+  // Nine places is not rounded to zero and then called dust: it is refused as a spelling (R17-F6).
+  await expectRefusal(
+    wallet.signTransaction(
+      { fromKeyPair: { address: p2wpkhAddress(user) }, toKeyPair: { address: p2wpkhAddress(recipient) }, amount: 1e-9, inputs: utxos() },
+      'pw',
+      'LTCTEST'
+    ),
+    /decimal places/
   );
 });
 
@@ -459,6 +468,48 @@ test('transfer amounts: a decimal with more than eight places is refused, not ro
   assert.throws(() => wallet.transferSats('1.000000004'), /decimal places/);
   assert.throws(() => wallet.transferSats('0.000000001'), /decimal places/);
   assert.equal(wallet.transferSats('0.00000546'), 546n);
+});
+
+test('UTXO amounts: the transfer rule applies to them too; a spelling it refuses is refused, not read as another amount (R17-F5)', () => {
+  for (const text of ['0x10', '', '1e-8', ' ', '-1', '0b1', '1,5', '1.2.3', 'Infinity', 'NaN']) {
+    assert.throws(() => wallet.ltcToSats(text), /amount/, `"${JSON.stringify(text)}" was read as an amount`);
+  }
+  assert.throws(() => wallet.ltcToSats(undefined), /amount/);
+  assert.throws(() => wallet.ltcToSats(NaN), /amount/);
+  assert.throws(() => wallet.ltcToSats(-0.5), /amount/);
+});
+
+test('amounts: a number with more than eight places is refused by every path, not rounded (R17-F6)', () => {
+  assert.throws(() => wallet.ltcToSats(0.123456789), /decimal places/);
+  assert.throws(() => wallet.transferSats(0.123456789), /decimal places/);
+  assert.throws(() => wallet.transferSats(1.000000004), /decimal places/);
+  assert.throws(() => wallet.transferSats('0.123456789'), /decimal places/);
+});
+
+test('amounts: legitimate node amounts, as numbers, convert exactly and agree with their text (R17-F5/F6)', () => {
+  // [number, its plain decimal text, satoshis]. A number whose String() has an exponent is read as its digits.
+  const cases = [
+    [258.1, '258.1', 25_810_000_000], // the amount a node returns; a bug once refused it
+    [0.29, '0.29', 29_000_000],
+    [1.1, '1.1', 110_000_000],
+    [0.00000546, '0.00000546', 546],
+    [0.00001, '0.00001', 1_000],
+    [0.00000001, '0.00000001', 1],
+    [0.0000001, '0.0000001', 10],
+    [12345678.12345678, '12345678.12345678', 1_234_567_812_345_678],
+    [21000000.00000001, '21000000.00000001', 2_100_000_000_000_001],
+    [90071992.5474099, '90071992.5474099', 9_007_199_254_740_990], // the largest safe satoshi count, to the 8th place
+  ];
+  for (const [value, text, sats] of cases) {
+    assert.equal(wallet.ltcToSats(value), sats, `ltcToSats(${value})`);
+    assert.equal(wallet.ltcToSats(text), sats, `ltcToSats("${text}")`);
+    if (sats >= 546) {
+      assert.equal(wallet.transferSats(value), BigInt(sats), `transferSats(${value})`);
+      assert.equal(wallet.transferSats(text), BigInt(sats), `transferSats("${text}")`);
+    }
+  }
+  assert.throws(() => wallet.transferSats(0.0000001), /dust limit/, 'a dust amount is refused by the transfer path only');
+  assert.equal(wallet.ltcToSats(0.0000001), 10);
 });
 
 test('approval: the amount line shows the exact satoshis that will be signed, or refuses (R13-7)', () => {

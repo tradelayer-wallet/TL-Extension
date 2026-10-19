@@ -11,8 +11,6 @@ import SeedPhraseImport from '../components/SeedPhraseImport';
 import ShowSeedPhrase from '../components/showSeedPhrase';
 import Balances from '../components/balance';
 import Send from '../components/Send';
-import Lock from '../components/lock';
-import Withdraw from '../components/withdraw';
 import Settings from '../components/settings';
 import ExposeSeed from '../components/ExposeSeed';
 import SignTransaction from '../components/SignTransaction';
@@ -388,8 +386,6 @@ const App = () => {
         {step === 6 && <PasswordPrompt />}
         {step === 7 && <Balances />}
         {step === 8 && <Send />}
-        {step === 9 && <Lock />}
-        {step === 10 && <Withdraw />}
         {step === 11 && <Settings />}
         {step === 12 && <ExposeSeed />}
         {step === 13 && <SignTransaction />}

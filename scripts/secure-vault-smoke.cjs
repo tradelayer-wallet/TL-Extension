@@ -413,6 +413,48 @@ const buildEnvelopeWithIter = async (text, password, iter) => {
       await assert.rejects(() => vault.openLiveSeed('spaced password'), /Failed to decrypt/);
     }
 
+    // --- seeds the released import stored before the vault rework keep opening ---
+    // That import kept each word as typed (trimmed, case kept) with no wordlist or
+    // checksum check, and keys were derived from that exact string. Such a seed
+    // must open, under its password only, and survive migration byte for byte.
+    {
+      const seedStore = new Map();
+      globalThis.localStorage = {
+        getItem: (key) => (seedStore.has(key) ? seedStore.get(key) : null),
+        setItem: (key, value) => seedStore.set(key, String(value)),
+        removeItem: (key) => seedStore.delete(key),
+      };
+      const twelve = (last) => `${'abandon '.repeat(11)}${last}`;
+      const legacySeeds = {
+        'a capitalised word': `Abandon ${'abandon '.repeat(10)}about`,
+        'a checksum typo': twelve('abandon'),
+        'a word not in the wordlist': twelve('abandn'),
+      };
+      for (const [label, phrase] of Object.entries(legacySeeds)) {
+        assert.equal(validateSeedPlaintext(phrase), true, `a legacy seed with ${label} must validate`);
+        const legacy = CryptoJS.AES.encrypt(phrase, 'old password').toString();
+        seedStore.clear();
+        seedStore.set('encryptedSeed', legacy);
+        const opened = await vault.openLiveSeed('old password');
+        assert.equal(opened.plaintext, phrase, `a legacy seed with ${label} must open as stored`);
+        assert.equal(await vault.liveSeedOpensUnder('not the password'), false, `${label}: a wrong password must not open it`);
+        const upgraded = await maybeUpgradeStoredBlob('encryptedSeed', legacy, opened.plaintext, 'old password', PLAINTEXT_KIND.SEED);
+        assert.ok(upgraded, `a legacy seed with ${label} must migrate`);
+        const reopened = await vault.openLiveSeed('old password');
+        assert.equal(reopened.legacy, false, `${label}: the migrated blob must be v2`);
+        assert.equal(reopened.plaintext, phrase, `${label}: migration must keep the phrase byte for byte`);
+      }
+      for (const shape of [
+        'abandon '.repeat(10) + 'about',
+        'abandon '.repeat(24) + 'about',
+        twelve('ab4ndon'),
+        twelve('abandon!'),
+        `${'abandon\t'.repeat(11)}about`,
+      ]) {
+        assert.equal(validateSeedPlaintext(shape), false, `${JSON.stringify(shape)} must not validate as a seed`);
+      }
+    }
+
     console.log('[unit] secure vault smoke test passed');
   } finally {
     fs.rmSync(outDir, { recursive: true, force: true });

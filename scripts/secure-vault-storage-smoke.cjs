@@ -405,7 +405,8 @@ const makeStorage = () => {
             fs.readFileSync(full, 'utf8')
               .split('\n')
               .forEach((line, index) => {
-                if (/m\/(44|84)'\//.test(line)) pathLiterals.push(`${path.relative(ROOT, full)}:${index + 1}`);
+                // Forward slashes on every platform: path.relative gives lib\networks.js on Windows.
+                if (/m\/(44|84)'\//.test(line)) pathLiterals.push(`${path.relative(ROOT, full).split(path.sep).join('/')}:${index + 1}`);
               });
           }
         }

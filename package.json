@@ -67,7 +67,7 @@
     "build:release": "npm run build",
     "build:dev": "node build.js --mode=development",
     "test": "npm run test:smoke",
-    "test:smoke": "node scripts/secure-vault-smoke.cjs && node scripts/secure-vault-storage-smoke.cjs && node scripts/secure-vault-model-check.cjs && node scripts/provider-flow-smoke.cjs && node scripts/content-legacy-smoke.cjs && node scripts/background-permission-smoke.cjs && node scripts/spend-binding-smoke.cjs && node scripts/release-build-smoke.cjs",
+    "test:smoke": "node scripts/secure-vault-smoke.cjs && node scripts/secure-vault-storage-smoke.cjs && node scripts/secure-vault-model-check.cjs && node scripts/provider-flow-smoke.cjs && node scripts/content-legacy-smoke.cjs && node scripts/background-permission-smoke.cjs && node scripts/spend-binding-smoke.cjs && node scripts/sign-message-smoke.cjs && node scripts/release-build-smoke.cjs",
     "package": "npm run test:smoke && npm run build:release",
     "package:dev": "npm run test:smoke && npm run build:dev"
   },

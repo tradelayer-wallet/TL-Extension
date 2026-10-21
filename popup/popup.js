@@ -11,8 +11,6 @@ import SeedPhraseImport from '../components/SeedPhraseImport';
 import ShowSeedPhrase from '../components/showSeedPhrase';
 import Balances from '../components/balance';
 import Send from '../components/Send';
-import Lock from '../components/lock';
-import Withdraw from '../components/withdraw';
 import Settings from '../components/settings';
 import ExposeSeed from '../components/ExposeSeed';
 import SignTransaction from '../components/SignTransaction';
@@ -22,6 +20,9 @@ import ResetPass from '../components/ResetPass';
 import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
+import { restoreFromBackup, SEED_STORAGE_KEY } from '../lib/secureVault';
+import { senderClass } from '../lib/senders';
+import { networkIdOf } from '../lib/networks';
 import {
   setAddress,
   setApprovalRequest,
@@ -38,17 +39,13 @@ import {
   setTxToSign,
 } from '../store/store';
 
-const normalizeWalletNetwork = (network) => {
-  const value = String(network || 'LTC').trim().toUpperCase();
+// Recovery helper, documented in README.md: run in the popup's devtools console
+// with the password that opens the chosen backup slot ('bak' by default, or
+// 'prev' after an interrupted password change). The slot's blob is verified
+// before it replaces encryptedSeed, and the blob it displaces is kept in .prev.
+window.restoreSeedFromBackup = (password, source = 'bak') =>
+  restoreFromBackup(SEED_STORAGE_KEY, password, undefined, source);
 
-  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
-  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
-  if (value === 'TESTNET') return 'LTCTEST';
-  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
-  if (value === 'LTC' || value === 'LTCTEST') return value;
-
-  return value;
-};
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
 
@@ -63,14 +60,14 @@ const inferWalletNetworkFromAddress = (address) => {
 };
 
 const pickStoredWalletAccount = (addresses, preferredNetwork) => {
-  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedPreferred = networkIdOf(preferredNetwork);
   const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
     .map((item) => {
       if (typeof item === 'string') {
         return {
           address: item,
           pubkey: null,
-          network: normalizeWalletNetwork(
+          network: networkIdOf(
             inferWalletNetworkFromAddress(item) || normalizedPreferred
           ),
         };
@@ -78,7 +75,7 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
 
       if (!item || typeof item.address !== 'string') return null;
 
-      const network = normalizeWalletNetwork(
+      const network = networkIdOf(
         item.network ||
         item.networkId ||
         inferWalletNetworkFromAddress(item.address) ||
@@ -102,14 +99,14 @@ const pickStoredWalletAccount = (addresses, preferredNetwork) => {
 };
 
 const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwork) => {
-  const normalizedPreferred = normalizeWalletNetwork(preferredNetwork);
+  const normalizedPreferred = networkIdOf(preferredNetwork);
   const normalizedAccounts = (Array.isArray(addresses) ? addresses : [])
     .map((item) => {
       if (typeof item === 'string') {
         return {
           address: item,
           pubkey: null,
-          network: normalizeWalletNetwork(
+          network: networkIdOf(
             inferWalletNetworkFromAddress(item) || normalizedPreferred
           ),
         };
@@ -120,7 +117,7 @@ const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwor
       return {
         address: item.address,
         pubkey: item.pubkey || item.publicKey || null,
-        network: normalizeWalletNetwork(
+        network: networkIdOf(
           item.network ||
           item.networkId ||
           inferWalletNetworkFromAddress(item.address) ||
@@ -132,7 +129,7 @@ const resolveStoredWalletSelection = (addresses, activeAccounts, preferredNetwor
 
   const activeEntries = Object.entries(activeAccounts || {})
     .map(([network, address]) => ({
-      network: normalizeWalletNetwork(network),
+      network: networkIdOf(network),
       address,
     }))
     .filter((entry) => typeof entry.address === 'string' && entry.address.length > 0);
@@ -165,6 +162,11 @@ const App = () => {
 
   useEffect(() => {
     const listener = (message, sender, sendResponse) => {
+      // Only the extension's own pages and service worker may drive this popup.
+      const fromExtension = senderClass(sender, chrome.runtime);
+      if (fromExtension !== 'popup' && fromExtension !== 'extension') {
+        return false;
+      }
       console.log('inside listener in popup.js ' + JSON.stringify(message));
 
       if (message.method === 'getAccount') {
@@ -307,7 +309,7 @@ const App = () => {
       });
     }
 
-    const encryptedSeed = localStorage.getItem('encryptedSeed');
+    const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
     if (stepParam) {
       dispatch(setStep(parseInt(stepParam, 10)));
     } else {
@@ -384,8 +386,6 @@ const App = () => {
         {step === 6 && <PasswordPrompt />}
         {step === 7 && <Balances />}
         {step === 8 && <Send />}
-        {step === 9 && <Lock />}
-        {step === 10 && <Withdraw />}
         {step === 11 && <Settings />}
         {step === 12 && <ExposeSeed />}
         {step === 13 && <SignTransaction />}

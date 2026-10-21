@@ -107,4 +107,22 @@ if (!Array.isArray(legacyResponse.data.data.result)) fail('Legacy response missi
 if (!Array.isArray(legacyResponse.data.data.payload?.result)) fail('Legacy response missing data.payload.result.');
 if (legacyResponse.data.data.id !== 7) fail('Legacy response id changed.');
 
+// A page cannot choose the legacy network rules by sending the flag itself: the flag is set by the
+// bridge that received the request, never copied from the page.
+dispatchPageMessage({
+  channel: 'tradelayer-provider',
+  sessionId: 'content-session',
+  type: 'request',
+  data: {
+    id: 'forged-flag',
+    method: 'requestAccounts',
+    params: { network: 'LTCTEST', __legacyBridge: true },
+  },
+});
+const forgedRuntime = runtimeMessages[runtimeMessages.length - 1];
+if (forgedRuntime?.data?.id !== 'forged-flag') fail('Forged-flag request did not reach runtime.');
+if (forgedRuntime.data.params.__legacyBridge === true) {
+  fail('A page-supplied __legacyBridge flag reached the background on a modern request.');
+}
+
 console.log('[unit] legacy content bridge ok', legacyResponse.data.data.result);

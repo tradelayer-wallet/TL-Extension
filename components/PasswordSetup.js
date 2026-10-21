@@ -1,9 +1,14 @@
 import React, { useState } from 'react';
-import CryptoJS from 'crypto-js';
 import { useDispatch, useSelector } from 'react-redux';
 import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you have an action to set the password
 import { setStep } from '../store/store';
-import { clearPrivateKeyCaches } from '../lib/walletUtils';
+import {
+  openLiveSeed,
+  checkNewPasswordPolicy,
+  replaceStoredBlob,
+  PLAINTEXT_KIND,
+  SEED_STORAGE_KEY,
+} from '../lib/secureVault';
 
 const PasswordSetup = () => {
   let [password, setPasswordValue] = useState('');
@@ -12,39 +17,56 @@ const PasswordSetup = () => {
   const dispatch = useDispatch();
   const seedPhrase = useSelector((state) => state.seedPhrase); // Get the seed phrase from Redux
 
-  const handlePasswordSubmit = () => {
-    // Check if passwords match
-    if (password !== confirmationPassword) {
-      password = ''
-      confirmationPassword =''
-      setPasswordError('Passwords do not match. Please try again.');
-      return;
-    }
-    setConfirmationPasswordValue('')    
-    let encryptedSeed = localStorage.getItem('encryptedSeed');
-    
-    // If there's no encrypted seed, encrypt the seedPhrase and store it
-    if (!encryptedSeed || encryptedSeed.length === 0) {
-      if (!seedPhrase || seedPhrase.length === 0) {
-        alert('Seed phrase not available.');
-        return;  // If seed phrase is empty, prevent further processing
+  const handlePasswordSubmit = async () => {
+    try {
+      // Check if passwords match
+      if (password !== confirmationPassword) {
+        password = ''
+        confirmationPassword =''
+        setPasswordError('Passwords do not match. Please try again.');
+        return;
+      }
+      setConfirmationPasswordValue('')    
+      const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
+
+      // If there's no encrypted seed, encrypt the seedPhrase and store it
+      if (!encryptedSeed || encryptedSeed.length === 0) {
+        if (!seedPhrase || seedPhrase.length === 0) {
+          alert('Seed phrase not available.');
+          return;  // If seed phrase is empty, prevent further processing
+        }
+
+        // Minimal policy for NEW passwords (existing legacy passwords are
+        // never re-checked against this policy on the read path).
+        const policyError = checkNewPasswordPolicy(password);
+        if (policyError) {
+          setPasswordError(`Choose a stronger password: ${policyError}`);
+          return;
+        }
+
+        // Store the seed as a v2 vault blob. replaceStoredBlob only keeps it
+        // after it decrypts back to the seed phrase under this password.
+        await replaceStoredBlob(SEED_STORAGE_KEY, null, seedPhrase, password, PLAINTEXT_KIND.SEED);
+      } else {
+        // An existing seed: the password must open it (the plaintext must be a
+        // valid BIP39 mnemonic).
+        try {
+          await openLiveSeed(password);
+        } catch (error) {
+          setPasswordValue('')
+          alert('Incorrect password. Please try again.');
+          return;
+        }
       }
 
-      // Encrypt the seedPhrase and store it in localStorage
-      encryptedSeed = CryptoJS.AES.encrypt(seedPhrase, password).toString();
-      localStorage.setItem('encryptedSeed', encryptedSeed);  // Store the encrypted seed in localStorage
-      clearPrivateKeyCaches();
-    }
-
-    // Decrypt the seed phrase using the entered password
-    const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
-    setPasswordValue('')
-    const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    if (serializedSeed) {
+      setPasswordValue('')
       dispatch(setSeedPhrase(null));
-      dispatch(setStep(6)); // Proceed to Step 6 (Password prompt) after successful decryption
-    } else {
-      alert('Incorrect password. Please try again.');
+      dispatch(setStep(6)); // Proceed to Step 6 (Password prompt)
+    } catch (error) {
+      // Surface unexpected failures instead of leaving an unhandled rejection.
+      console.error('Password setup failed:', error);
+      setPasswordValue('');
+      setPasswordError(`Unable to save the password: ${error?.message || error}`);
     }
   };
 

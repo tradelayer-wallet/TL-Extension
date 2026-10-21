@@ -3,7 +3,8 @@ import React, { useState, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import axios from 'axios';
 import { setStep, setTxid } from '../store/store'; // Add setTxid to Redux actions
-import { checkPasswordMatch, signTransaction } from '../lib/walletUtils';
+import { signTransaction } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const Send = () => {
   const [toAddress, setAddress] = useState('');
@@ -17,31 +18,20 @@ const Send = () => {
 
   const onBack = () => dispatch(setStep(7)); // Go back to previous page
 
-  const checkPassword = async (password) => {
-    try {
-      const encryptedSeed = localStorage.getItem('encryptedSeed');
-      if (!encryptedSeed) return false;
-      console.log('Checking password for network:', network);
-      return await checkPasswordMatch(encryptedSeed, password, network, fromAddress);
-    } catch (error) {
-      console.error('Error in password check:', error);
-      return false;
-    }
-  };
-
   const onSend = async () => {
-    let password = passwordRef.current?.value.trim();
+    // The password is used exactly as typed, as setup and unlock store it.
+    let password = passwordRef.current?.value;
     passwordRef.current.value =''
     if (!password) {
       alert('Please enter a password');
       return;
     }
 
-    /*const isValidPassword = await checkPassword(password);
+    const isValidPassword = await liveSeedOpensUnder(password);
     if (!isValidPassword) {
       alert('Invalid password');
       return;
-    }*/
+    }
 
     if (!toAddress || !amount) {
       alert('Please fill in both fields.');
@@ -76,12 +66,16 @@ const Send = () => {
         return
       }
       const txResponse = await axios.post(txUrl, { rawTx: decodedTx.data.rawTx });
-      if(!txResponse.data.txid.data){
+      // The relayer answers { txid: "<hex>" } (tl-relayer broadcastTx). Older builds answered
+      // { txid: { data: "<hex>" } }; accept both so the send does not fail on a valid broadcast.
+      const txidField = txResponse.data?.txid;
+      const txid = typeof txidField === 'string' ? txidField : txidField?.data;
+      if(!txid){
         alert("Error sending transaction.")
         return
       }
-      console.log('Transaction sent. TXID:', txResponse.data.txid.data);
-      dispatch(setTxid(txResponse.data.txid.data));
+      console.log('Transaction sent. TXID:', txid);
+      dispatch(setTxid(txid));
       dispatch(setStep(14)); // Move to confirmation step
     } catch (error) {
       console.error('Error sending transaction:', error);

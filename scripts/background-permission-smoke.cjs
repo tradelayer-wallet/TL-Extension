@@ -1,9 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
+const esbuild = require('esbuild');
 
 const ROOT = path.resolve(__dirname, '..');
-const source = fs.readFileSync(path.join(ROOT, 'background', 'background.js'), 'utf8');
+// The worker imports the shared network table, so it is bundled the way the build ships it.
+const source = esbuild.buildSync({
+  entryPoints: [path.join(ROOT, 'background', 'background.js')],
+  bundle: true,
+  format: 'iife',
+  platform: 'browser',
+  write: false,
+}).outputFiles[0].text;
 const origin = 'https://layerwallet.com';
 const popupUrl = 'chrome-extension://unit/popup/popup.html';
 const accounts = [{
@@ -47,6 +55,7 @@ const chrome = {
         runtimeListeners.push(listener);
       },
     },
+    id: 'unit',
     lastError: null,
   },
   windows: {
@@ -92,15 +101,21 @@ if (runtimeListeners.length !== 1) {
 }
 
 const listener = runtimeListeners[0];
-const pageSender = { origin, url: `${origin}/provider-smoke`, tab: { id: 1 }, frameId: 0 };
+const pageSender = { id: 'unit', origin, url: `${origin}/provider-smoke`, tab: { id: 1 }, frameId: 0 };
 const untrustedOrigin = 'https://untrusted.example';
 const untrustedSender = {
+  id: 'unit',
   origin: untrustedOrigin,
   url: `${untrustedOrigin}/provider-smoke`,
   tab: { id: 2 },
   frameId: 0,
 };
-const popupSender = { url: `${popupUrl}?step=13&message=unit-sign` };
+// The approval window is a popup window: Chrome gives its page a tab and the extension's own URL.
+const popupSender = { id: 'unit', url: `${popupUrl}?step=13&message=unit-sign`, tab: { id: 9 }, frameId: 0 };
+// The toolbar popup is not in a tab.
+const toolbarPopupSender = { id: 'unit', url: popupUrl };
+// A web page that messages the extension through externally_connectable has no extension id.
+const externalPageSender = { origin, url: `${origin}/provider-smoke`, tab: { id: 4 }, frameId: 0 };
 
 const send = (message, sender = pageSender) => new Promise((resolve) => {
   listener(message, sender, resolve);
@@ -111,6 +126,12 @@ const providerRequest = (id, method, params = {}) => ({
   type: 'providerRequest',
   data: { id, method, params },
 });
+
+const settle = async (done) => {
+  for (let attempt = 0; attempt < 50 && !done(); attempt += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+};
 
 const expectFailure = async (label, request, pattern, sender = pageSender) => {
   const response = await send(request, sender);
@@ -288,6 +309,105 @@ const main = async () => {
   );
   if (rejected?.success !== true || signResponse?.success !== false) {
     throw new Error('Approved legacy sign request did not remain pending for popup approval.');
+  }
+
+  await expectFailure(
+    'extension options page cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    { id: 'unit', url: 'chrome-extension://unit/options.html' }
+  );
+  await expectFailure(
+    'foreign extension cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    { id: 'other-extension', url: 'chrome-extension://other-extension/popup/popup.html' }
+  );
+  await expectFailure(
+    'page sender cannot approve a connect request',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    pageSender
+  );
+  await expectFailure(
+    'external web page cannot approve',
+    { method: 'approvalDecision', payload: { requestId: 'legacy-approved-sign', approved: true } },
+    /invalid sender/,
+    externalPageSender
+  );
+
+  // The toolbar popup has no tab, and approves a request the same way the approval window does.
+  let toolbarSignResponse;
+  const windowsBeforeToolbar = createdWindows;
+  listener(providerRequest('toolbar-sign', 'signMessage', { network: 'LTCTEST', message: 'toolbar' }), pageSender, (response) => {
+    toolbarSignResponse = response;
+  });
+  await settle(() => createdWindows > windowsBeforeToolbar);
+  const toolbarReady = await send({ method: 'popupReady', payload: { requestId: 'toolbar-sign' } }, toolbarPopupSender);
+  if (toolbarReady?.success !== true) {
+    throw new Error(`The toolbar popup could not reach a pending request: ${JSON.stringify(toolbarReady)}`);
+  }
+  const toolbarRejected = await send(
+    { method: 'rejectPendingRequest', payload: { requestId: 'toolbar-sign', reason: 'smoke toolbar' } },
+    toolbarPopupSender
+  );
+  if (toolbarRejected?.success !== true) {
+    throw new Error(`The toolbar popup could not reject a pending request: ${JSON.stringify(toolbarRejected)}`);
+  }
+  await settle(() => toolbarSignResponse);
+
+  // A request id reused by the same page is refused, and must not cancel the request that owns the id.
+  const firstResponses = [];
+  const windowsBeforeDuplicate = createdWindows;
+  listener(providerRequest('dup-id', 'signMessage', { network: 'LTCTEST', message: 'first' }), pageSender, (response) => {
+    firstResponses.push(response);
+  });
+  await settle(() => createdWindows > windowsBeforeDuplicate);
+  await expectFailure(
+    'duplicate request id',
+    providerRequest('dup-id', 'signMessage', { network: 'LTCTEST', message: 'second' }),
+    /Duplicate request id/
+  );
+  const cancelled = await send({ method: 'rejectPendingRequest', payload: { requestId: 'dup-id', reason: 'smoke dup' } }, popupSender);
+  if (cancelled?.success !== true) {
+    throw new Error(`A duplicate request id removed the pending request it duplicated: ${JSON.stringify(cancelled)}`);
+  }
+  await settle(() => firstResponses.length > 0);
+  if (firstResponses[0]?.success !== false || !/smoke dup/.test(firstResponses[0].error || '')) {
+    throw new Error(`The original request was not answered by its rejection: ${JSON.stringify(firstResponses)}`);
+  }
+
+  // An approval that cannot produce accounts grants nothing and answers the waiting page.
+  const connectResponses = [];
+  const windowsBeforeConnect = createdWindows;
+  listener(providerRequest('connect-no-ltc', 'connect', { network: 'LTC' }), pageSender, (response) => {
+    connectResponses.push(response);
+  });
+  await settle(() => createdWindows > windowsBeforeConnect);
+  await send(
+    { method: 'approvalDecision', payload: { requestId: 'connect-no-ltc', approved: true } },
+    popupSender
+  );
+  await settle(() => connectResponses.length > 0);
+  if (storage.sitePermissionsV1[origin].includes('LTC')) {
+    throw new Error('An approval with no LTC account still granted LTC to the origin.');
+  }
+  if (connectResponses[0]?.success !== false) {
+    throw new Error(`The waiting connect request was not answered after the failed approval: ${JSON.stringify(connectResponses)}`);
+  }
+
+  // Network aliases name one network everywhere: each spelling a wallet accepts resolves to it.
+  storage.addresses.push({ address: 'DDummyDogecoinAddress00000000000000', pubkey: null, network: 'DOGE' });
+  storage.sitePermissionsV1 = { [origin]: ['LTCTEST', 'DOGE'] };
+  for (const alias of ['tltc', 'TESTNET', 'litecoin-testnet']) {
+    const response = await send(providerRequest(`alias-${alias}`, 'requestAccounts', { network: alias }), pageSender);
+    if (response?.success !== true || response.result?.[0]?.address !== accounts[0].address) {
+      throw new Error(`Network alias ${alias} did not resolve to LTCTEST: ${JSON.stringify(response)}`);
+    }
+  }
+  const dogeResponse = await send(providerRequest('alias-dogecoin', 'requestAccounts', { network: 'dogecoin' }), pageSender);
+  if (dogeResponse?.success !== true || dogeResponse.result?.[0]?.network !== 'DOGE') {
+    throw new Error(`Network alias dogecoin did not resolve to DOGE: ${JSON.stringify(dogeResponse)}`);
   }
 
   console.log('[unit] background permission smoke test passed');

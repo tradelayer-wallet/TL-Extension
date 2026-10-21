@@ -28,7 +28,7 @@ const SeedPhraseConfirmation = () => {
   }, [seedPhrase]);
 
   const handleConfirmSeed = (selectedWord) => {
-    console.log('selectedWord '+selectedWord+' '+'confirmationWord '+confirmationWord)
+    // Never log the words: they are seed phrase material.
     if (selectedWord === confirmationWord) {
       setConfirmed(true);
       setConfirmationError('');  // Reset error message

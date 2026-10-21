@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setStep, setAddress, setPubKey, setNetwork } from '../store/store';
 import { generateAddressFromSeed, clearPrivateKeyCaches } from '../lib/walletUtils';
+import { isLegacyVaultBlob, SEED_STORAGE_KEY } from '../lib/secureVault';
 
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
 
@@ -17,17 +18,20 @@ const PasswordPrompt = () => {
     { id: 'DOGETEST', name: 'Dogecoin Testnet', logo: '../images/tdoge.png' },
   ];
 
-  const handlePasswordSubmit = () => {
+  const handlePasswordSubmit = async () => {
     let password = passwordRef.current.value;
     passwordRef.current.value = '';
-    const encryptedSeed = localStorage.getItem('encryptedSeed');
-    if (!password) {
+    const encryptedSeed = localStorage.getItem(SEED_STORAGE_KEY);
+    // An empty password is only accepted for legacy CryptoJS blobs: the
+    // pre-PR setup flow allowed empty passwords, and those users must be able
+    // to unlock (and then set a real password). v2 blobs can never have one.
+    if (!password && !isLegacyVaultBlob(encryptedSeed)) {
       alert('Please enter a password');
       return;
     }
     if(!selectedNetwork){selectedNetwork="LTC"}
     try {
-    let addressData = generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
+    let addressData = await generateAddressFromSeed(encryptedSeed, selectedNetwork,password);
 
   chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {
     let addresses = result.addresses || []; // Retrieve existing addresses array or initialize as empty
@@ -82,10 +86,10 @@ const PasswordPrompt = () => {
         dispatch(setAddress(addressData.address));
         dispatch(setPubKey(addressData.publicKey));
         password=''
-        // Encrypt and store the private key in local storage for later use
+        // Drop cached keys from an earlier session (including the legacy
+        // 'encryptedKey' entry). Signing derives and caches the key on demand
+        // through the vault write path, so nothing is written here.
         clearPrivateKeyCaches();
-        const encryptedKey = addressData.privateKey
-        localStorage.setItem('encryptedKey', encryptedKey);
         addressData = null
           // Proceed to step 7
           dispatch(setStep(7));

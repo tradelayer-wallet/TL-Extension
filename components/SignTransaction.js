@@ -1,7 +1,8 @@
 import React, { useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { setMessageToSign, setSignRequest, setStep, setTxToSign } from '../store/store';
-import { checkPasswordMatch, signMessage, signTransaction } from '../lib/walletUtils';
+import { signMessage, signTransaction, transferAmountLabel } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const SignTransaction = () => {
   const dispatch = useDispatch();
@@ -13,13 +14,15 @@ const SignTransaction = () => {
   const requestOrigin = useSelector((state) => state.requestOrigin);
   const txToSign = useSelector((state) => state.tx);
 
-  const checkPassword = async (password) => {
+  let amountLabel = null;
+  let amountError = null;
+  if (txToSign && !messageToSign) {
     try {
-      return await checkPasswordMatch(password, network, address);
-    } catch {
-      return false;
+      amountLabel = transferAmountLabel(txToSign.amount);
+    } catch (error) {
+      amountError = error.message;
     }
-  };
+  }
 
   const reject = async (reason = 'User rejected the signing request.') => {
     if (requestId) {
@@ -43,7 +46,7 @@ const SignTransaction = () => {
       return;
     }
 
-    const valid = await checkPassword(password);
+    const valid = await liveSeedOpensUnder(password);
     if (!valid) {
       alert('Invalid password');
       return;
@@ -51,7 +54,7 @@ const SignTransaction = () => {
 
     try {
       if (messageToSign) {
-        const signedMessage = await signMessage(messageToSign, password);
+        const signedMessage = await signMessage(messageToSign, password, network);
         await chrome.runtime.sendMessage({
           method: 'signMessageResponse',
           payload: {
@@ -99,6 +102,7 @@ const SignTransaction = () => {
       {!messageToSign && txToSign && (
         <div>
           <h3>Transaction Payload</h3>
+          <p><strong>Amount to sign:</strong> {amountLabel || `refused: ${amountError}`}</p>
           <pre className="tx-box" style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
             {JSON.stringify(txToSign, null, 2)}
           </pre>
@@ -115,7 +119,7 @@ const SignTransaction = () => {
         />
       </div>
 
-      <button onClick={sign}>Approve</button>
+      <button onClick={sign} disabled={Boolean(amountError)}>Approve</button>
       <button onClick={() => reject()}>Reject</button>
     </div>
   );

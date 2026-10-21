@@ -1,3 +1,6 @@
+import { networkIdOf } from '../lib/networks.js';
+import { senderClass } from '../lib/senders.js';
+
 const CHANNEL = 'tradelayer-provider';
 const SITE_PERMISSIONS_KEY = 'sitePermissionsV1';
 const ACTIVE_ACCOUNTS_KEY = 'activeAccountsV1';
@@ -80,18 +83,6 @@ const removeWindow = (windowId) =>
     });
   });
 
-const normalizeNetworkId = (network) => {
-  const value = String(network || 'LTC').trim().toUpperCase();
-
-  if (value === 'TLTC' || value === 'TLTCTEST') return 'LTCTEST';
-  if (value === 'LITECOIN-TESTNET' || value === 'LITECOIN_TESTNET') return 'LTCTEST';
-  if (value === 'LITECOIN' || value === 'LTCMAINNET' || value === 'MAINNET') return 'LTC';
-  if (value === 'TESTNET') return 'LTCTEST';
-  if (value === 'LTC' || value === 'LTCTEST') return value;
-
-  return value;
-};
-
 const getSenderOrigin = (sender) => {
   const candidate =
     sender.origin ||
@@ -138,11 +129,6 @@ const getSenderContext = (sender) => {
     tabId,
     frameId: sender.frameId ?? 0,
   };
-};
-
-const isPopupSender = (sender) => {
-  const popupUrl = chrome.runtime.getURL('popup/popup.html');
-  return typeof sender.url === 'string' && sender.url.startsWith(popupUrl);
 };
 
 const getPopupUrl = (step, requestId) => {
@@ -209,13 +195,13 @@ const normalizeStoredAddressRecord = (item) => {
     return {
       address: item,
       pubkey: null,
-      network: normalizeNetworkId(inferNetworkFromAddress(item)),
+      network: networkIdOf(inferNetworkFromAddress(item)),
     };
   }
 
   if (!item || typeof item.address !== 'string') return null;
 
-  const network = normalizeNetworkId(
+  const network = networkIdOf(
     item.network ||
     item.networkId ||
     inferNetworkFromAddress(item.address)
@@ -230,7 +216,7 @@ const normalizeStoredAddressRecord = (item) => {
 };
 
 const grantSitePermission = async (origin, network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const permissions = await getSitePermissions();
   const approvedNetworks = Array.isArray(permissions[origin]) ? permissions[origin] : [];
 
@@ -243,7 +229,7 @@ const grantSitePermission = async (origin, network) => {
 };
 
 const resolveApprovedNetwork = async (origin, network) => {
-  const requested = network ? normalizeNetworkId(network) : null;
+  const requested = network ? networkIdOf(network) : null;
   const approvedNetworks = await getApprovedNetworks(origin);
 
   if (requested) {
@@ -261,7 +247,7 @@ const resolveApprovedNetwork = async (origin, network) => {
 };
 
 const getAddressesForNetwork = async (network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const { addresses = [], [ACTIVE_ACCOUNTS_KEY]: activeAccounts = {} } = await storageGet([
     'addresses',
     ACTIVE_ACCOUNTS_KEY,
@@ -287,7 +273,7 @@ const getAddressesForNetwork = async (network) => {
 };
 
 const getPreferredLegacyNetwork = async (network) => {
-  if (network) return normalizeNetworkId(network);
+  if (network) return networkIdOf(network);
 
   const { addresses = [] } = await storageGet(['addresses']);
   const normalizedAccounts = (addresses || [])
@@ -318,7 +304,7 @@ const resolveRequestNetwork = async (origin, params) => {
 };
 
 const getExistingMultisig = async (m, pubkeys, network) => {
-  const normalized = normalizeNetworkId(network);
+  const normalized = networkIdOf(network);
   const { multisigs = [] } = await storageGet(['multisigs']);
 
   return (multisigs || []).find(
@@ -328,7 +314,7 @@ const getExistingMultisig = async (m, pubkeys, network) => {
       item.pubkeys.length === pubkeys.length &&
       item.pubkeys.every((pubkey, index) => pubkey === pubkeys[index]) &&
       typeof item.address === 'string' &&
-      normalizeNetworkId(item.network || inferNetworkFromAddress(item.address)) === normalized
+      networkIdOf(item.network || inferNetworkFromAddress(item.address)) === normalized
   );
 };
 
@@ -465,7 +451,7 @@ const dispatchPendingRequestToPopup = async (requestId) => {
 };
 
 const handleConnect = async (requestId, context, params, sendResponse) => {
-  const network = normalizeNetworkId(params?.network);
+  const network = networkIdOf(params?.network);
   const approvedNetworks = await getApprovedNetworks(context.origin);
   debugLog('connect state', { origin: context.origin, network, approvedNetworks });
 
@@ -653,11 +639,13 @@ const handleProviderRequest = async (message, sender, sendResponse) => {
     }
   } catch (error) {
     respondError(sendResponse, error);
-    if (pendingRequests.has(requestId)) {
+    // Only the request that owns the pending entry may tear it down. A reused id
+    // must not cancel the request it duplicates.
+    if (pendingRequests.get(requestId)?.sendResponse === sendResponse) {
       pendingRequests.delete(requestId);
-    }
-    if (popupRequestId === requestId) {
-      await closePopup();
+      if (popupRequestId === requestId) {
+        await closePopup();
+      }
     }
     return true;
   }
@@ -695,7 +683,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (
     ['popupReady', 'approvalDecision', 'signMessageResponse', 'signTxResponse', 'addMultisigResponse', 'rejectPendingRequest'].includes(message.method) &&
-    !isPopupSender(sender)
+    senderClass(sender, chrome.runtime) !== 'popup'
   ) {
     respondError(sendResponse, 'Popup-only method called from an invalid sender.');
     return true;
@@ -724,8 +712,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
+      // Read the accounts before granting: an approval that cannot produce any
+      // accounts grants nothing, and the waiting page is answered with the reason.
+      const accounts = await getAddressesForNetwork(pending.params.network).catch(async (error) => {
+        await rejectPendingRequest(requestId, error.message);
+        throw error;
+      });
       await grantSitePermission(pending.context.origin, pending.params.network);
-      const accounts = await getAddressesForNetwork(pending.params.network);
 
       await resolvePendingRequest(requestId, accounts);
       sendProviderEvent(pending.context, 'accountsChanged', accounts);

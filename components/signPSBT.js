@@ -1,7 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { setPSBTToSign, setSignRequest, setStep } from '../store/store';
-import { checkPasswordMatch, signInputsInPsbt, summarizePsbtForDisplay } from '../lib/walletUtils';
+import { signInputsInPsbt, summarizePsbtForDisplay } from '../lib/walletUtils';
+import { liveSeedOpensUnder } from '../lib/secureVault';
 
 const formatLtc = (sats) => (typeof sats === 'number' ? (sats / 1e8).toFixed(8) : 'unknown');
 
@@ -15,6 +16,7 @@ const SignPSBT = () => {
   const requestOrigin = useSelector((state) => state.requestOrigin);
   const address = useSelector((state) => state.address);
   const [summary, setSummary] = useState(null);
+  const [summaryError, setSummaryError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -22,6 +24,7 @@ const SignPSBT = () => {
     const loadSummary = async () => {
       if (!psbtPayload?.psbtHex) {
         setSummary(null);
+        setSummaryError('No PSBT loaded.');
         return;
       }
 
@@ -42,11 +45,13 @@ const SignPSBT = () => {
         );
         if (!cancelled) {
           setSummary(nextSummary);
+          setSummaryError(null);
         }
       } catch (error) {
         console.error('Failed to summarize PSBT:', error);
         if (!cancelled) {
           setSummary(null);
+          setSummaryError(error.message || 'The PSBT could not be decoded.');
         }
       }
     };
@@ -70,16 +75,40 @@ const SignPSBT = () => {
     dispatch(setStep(7));
   };
 
+  // Approve runs a password check and two PBKDF2 key derivations (600k iterations, async WebCrypto,
+  // so the page stays responsive while they run). A ref blocks a second click before React re-renders,
+  // and the button is disabled while the first one is in progress.
+  const [signing, setSigning] = useState(false);
+  const signingRef = useRef(false);
   const sign = async () => {
+    if (signingRef.current) return;
+    signingRef.current = true;
+    setSigning(true);
+    try {
+      await approve();
+    } finally {
+      signingRef.current = false;
+      setSigning(false);
+    }
+  };
+
+  const approve = async () => {
     const password = passwordRef.current.value || '';
     passwordRef.current.value = '';
+
+    // Signing needs the spend summary the user is reviewing. Without it the
+    // user would approve outputs they cannot see.
+    if (!summary) {
+      alert('The spend summary is not available, so this PSBT cannot be signed.');
+      return;
+    }
 
     if (!password) {
       alert('Please enter a password');
       return;
     }
 
-    const validPassword = await checkPasswordMatch(password, network, address);
+    const validPassword = await liveSeedOpensUnder(password);
     if (!validPassword) {
       alert('Invalid password');
       return;
@@ -133,6 +162,14 @@ const SignPSBT = () => {
       {network && <p><strong>Network:</strong> {network}</p>}
       <p><strong>Role:</strong> {sellerFlag ? 'Partial signer' : 'Final signer'}</p>
 
+      {!summary && (
+        <p style={{ color: '#b00020' }}>
+          {summaryError
+            ? `Spend summary unavailable: ${summaryError}. Signing is disabled.`
+            : 'Loading spend summary...'}
+        </p>
+      )}
+
       {summary && (
         <div>
           <h3>Spend Summary</h3>
@@ -141,6 +178,13 @@ const SignPSBT = () => {
           <p><strong>Total In:</strong> {formatLtc(summary.totalInputSats)} {summary.network}</p>
           <p><strong>Total Out:</strong> {formatLtc(summary.totalOutputSats)} {summary.network}</p>
           <p><strong>Estimated Fee:</strong> {formatLtc(summary.feeSats)} {summary.network}</p>
+          {summary.inputs.map((input) => (
+            <div key={`input-${input.index}`} style={{ marginBottom: '12px' }}>
+              <strong>Input {input.index}</strong>
+              <div>Amount: {formatLtc(input.valueSats)} {summary.network}</div>
+              <div>From: {input.address || 'unknown'}</div>
+            </div>
+          ))}
           {summary.outputs.map((output) => (
             <div key={output.index} style={{ marginBottom: '12px' }}>
               <strong>Output {output.index}</strong>
@@ -174,7 +218,7 @@ const SignPSBT = () => {
         />
       </div>
 
-      <button onClick={sign}>Approve</button>
+      <button onClick={sign} disabled={!summary || signing}>Approve</button>
       <button onClick={() => reject()}>Reject</button>
     </div>
   );

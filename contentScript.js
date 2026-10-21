@@ -93,7 +93,8 @@ const sendProviderRequest = ({ id, method, params, legacy }, callback) => {
         method: normalizeMethod(method),
         params: {
           ...(params || {}),
-          ...(legacy ? { __legacyBridge: true } : {}),
+          // Set by this bridge for every request; a page cannot supply it.
+          __legacyBridge: legacy === true,
         },
       },
     },

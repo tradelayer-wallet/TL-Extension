@@ -194,3 +194,14 @@ the cryptography.
   correspondence is by construction plus the shared vectors.
 * No consumer was changed: wiring into `background.js` / `walletUtils.js` is a later task and
   depends on the vault migration and on adopting the BIP-137 format (V1).
+
+## WASM
+
+Verified 2026-10-30 (Rust 1.90.0, `wasm32-unknown-unknown`, clang 18 for libsecp256k1):
+`cargo build --locked --lib --target wasm32-unknown-unknown` succeeds, and
+`wasm-smoke/` (a raw-ABI `cdylib`, 208,343 bytes in release) runs under Node's
+WebAssembly host: `node wasm-smoke/scripts/wasm-smoke.mjs <wasm>` prints
+`WASM_SMOKE_OK` after checking address validation (valid, uppercase, mixed case, bad
+checksum, wrong network, unknown network) and BIP-39 phrases for zero and `0xff`
+entropy against the native test vectors. The smoke ABI is for verification only; an
+extension binding still needs a reviewed generator and secret-zeroizing buffers.

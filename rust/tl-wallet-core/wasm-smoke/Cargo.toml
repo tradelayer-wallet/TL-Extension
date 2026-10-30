@@ -1,0 +1,16 @@
+[package]
+name = "tl-wallet-core-wasm-smoke"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+publish = false
+description = "Minimal raw-ABI wasm32 exports used to prove tl-wallet-core runs inside a WASM host"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+tl-wallet-core = { path = ".." }
+
+[profile.release]
+opt-level = "s"

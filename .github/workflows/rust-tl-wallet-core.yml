@@ -61,3 +61,23 @@ jobs:
           if echo "$out" | grep -q sorryAx; then
             echo "sorryAx found"; exit 1
           fi
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Install pinned toolchain with wasm32 target
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+          rustup target add wasm32-unknown-unknown --toolchain 1.90.0
+          sudo apt-get install -y clang
+      - name: Library builds for wasm32
+        working-directory: rust/tl-wallet-core
+        run: cargo +1.90.0 build --locked --lib --target wasm32-unknown-unknown
+      - name: WASM smoke (Node host)
+        working-directory: rust/tl-wallet-core/wasm-smoke
+        run: |
+          cargo +1.90.0 build --locked --release --target wasm32-unknown-unknown
+          node scripts/wasm-smoke.mjs target/wasm32-unknown-unknown/release/tl_wallet_core_wasm_smoke.wasm

@@ -1,0 +1,12 @@
+[package]
+name = "tl-wallet-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Pure TradeLayer wallet operations: explicit networks, addresses, coin selection, PSBT building, BIP-137 messages and a signing capability"
+license = "ISC"
+publish = false
+
+[dependencies]
+bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery"] }
+bip39 = { version = "2.2", default-features = false, features = ["std"] }

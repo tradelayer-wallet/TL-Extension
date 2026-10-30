@@ -53,9 +53,7 @@ impl Sats {
         while frac.len() < 8 {
             frac.push('0');
         }
-        let frac_val: u64 = frac
-            .parse()
-            .map_err(|_| Error::InvalidAmount("fraction"))?;
+        let frac_val: u64 = frac.parse().map_err(|_| Error::InvalidAmount("fraction"))?;
         int_val
             .checked_mul(COIN)
             .and_then(|v| v.checked_add(frac_val))

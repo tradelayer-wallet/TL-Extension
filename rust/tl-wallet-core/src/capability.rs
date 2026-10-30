@@ -157,11 +157,13 @@ pub fn authorize_tx(
         Scope::Message { .. } => return Err(Denied::WrongKind),
     };
     let mut seen: Vec<&OutPoint> = Vec::with_capacity(inputs.len());
-    for (i, inp) in inputs.iter().enumerate() {
+    for inp in inputs {
         if seen.contains(&&inp.outpoint) {
             return Err(Denied::DuplicateInput);
         }
         seen.push(&inp.outpoint);
+    }
+    for (i, inp) in inputs.iter().enumerate() {
         if !approved_in.contains(inp) {
             return Err(Denied::UnapprovedInput(i));
         }

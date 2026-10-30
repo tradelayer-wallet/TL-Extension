@@ -9,8 +9,8 @@ use crate::error::{Error, Result};
 use crate::network::Network;
 use bip39::{Language, Mnemonic};
 use bitcoin::bip32::{DerivationPath, Xpriv};
-use bitcoin::NetworkKind;
 use bitcoin::secp256k1::{All, PublicKey, Secp256k1, SecretKey};
+use bitcoin::NetworkKind;
 use bitcoin::{CompressedPublicKey, ScriptBuf};
 use std::str::FromStr;
 
@@ -177,7 +177,11 @@ fn derive(secp: &Secp256k1<All>, seed: &[u8; 64], path: &str) -> Result<DerivedK
 }
 
 impl Account {
-    pub fn from_mnemonic(m: &ImportedMnemonic, network: Network, change: ChangeMode) -> Result<Self> {
+    pub fn from_mnemonic(
+        m: &ImportedMnemonic,
+        network: Network,
+        change: ChangeMode,
+    ) -> Result<Self> {
         let secp = Secp256k1::new();
         let mut seed = m.to_seed();
         let receive = derive(&secp, &seed, &network.default_path());

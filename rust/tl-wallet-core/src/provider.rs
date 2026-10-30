@@ -53,7 +53,9 @@ impl ProviderMethod {
     pub fn needs_signing_approval(self) -> bool {
         matches!(
             self,
-            ProviderMethod::SignMessage | ProviderMethod::SignPsbt | ProviderMethod::SignTransaction
+            ProviderMethod::SignMessage
+                | ProviderMethod::SignPsbt
+                | ProviderMethod::SignTransaction
         )
     }
 }
@@ -97,7 +99,9 @@ impl OriginPolicy {
         for o in approved_https {
             let origin = Origin::from_url(o)?;
             if !origin.is_https() {
-                return Err(ProviderError::InvalidRequest("approved origin must be https"));
+                return Err(ProviderError::InvalidRequest(
+                    "approved origin must be https",
+                ));
             }
             v.push(origin);
         }
@@ -375,7 +379,11 @@ pub fn evaluate(
             let network = resolve_network(perms, &origin, req, stored)?;
             match req.message.as_deref() {
                 Some(m) if !m.is_empty() && m.len() <= MAX_MESSAGE_BYTES => {}
-                _ => return Err(ProviderError::InvalidRequest("message required (<= 64 KiB)")),
+                _ => {
+                    return Err(ProviderError::InvalidRequest(
+                        "message required (<= 64 KiB)",
+                    ))
+                }
             }
             Ok(Decision::NeedsApproval {
                 origin,

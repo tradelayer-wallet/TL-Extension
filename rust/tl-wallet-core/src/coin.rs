@@ -4,7 +4,7 @@
 //! the legacy accounting holes closed:
 //!
 //! * legacy only checked `total >= amount` (not `amount + fee`) and then computed a possibly
-//!   negative `change`, silently emitting a transaction whose outputs exceed its inputs;
+//!   negative `change`, silently emitting a transaction paying less fee than intended (even zero);
 //! * legacy emitted dust change; here change below the network dust threshold is folded into
 //!   the fee, and the resulting fee must still respect the explicit bound.
 //!

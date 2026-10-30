@@ -60,7 +60,9 @@ impl Address {
         } else if script.is_p2wsh() {
             AddressKind::P2wsh
         } else {
-            return Err(Error::UnsupportedAddress("script is not p2pkh/p2sh/p2wpkh/p2wsh"));
+            return Err(Error::UnsupportedAddress(
+                "script is not p2pkh/p2sh/p2wpkh/p2wsh",
+            ));
         };
         if matches!(kind, AddressKind::P2wpkh | AddressKind::P2wsh)
             && network.params().bech32_hrp.is_none()
@@ -150,8 +152,8 @@ impl Address {
                 };
             }
         }
-        let data = bitcoin::base58::decode_check(s)
-            .map_err(|_| Error::InvalidAddress("base58check"))?;
+        let data =
+            bitcoin::base58::decode_check(s).map_err(|_| Error::InvalidAddress("base58check"))?;
         if data.len() != 21 {
             return Err(Error::InvalidAddress("base58 payload length"));
         }
@@ -170,7 +172,9 @@ impl Address {
                 script: ScriptBuf::new_p2sh(&bitcoin::ScriptHash::from_byte_array(h)),
             })
         } else {
-            Err(Error::InvalidAddress("version byte not valid for this network"))
+            Err(Error::InvalidAddress(
+                "version byte not valid for this network",
+            ))
         }
     }
 

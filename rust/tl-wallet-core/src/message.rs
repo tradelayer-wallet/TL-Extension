@@ -75,7 +75,7 @@ pub(crate) fn b64_encode(data: &[u8]) -> String {
 
 pub(crate) fn b64_decode(s: &str) -> Result<Vec<u8>> {
     const BAD: Error = Error::InvalidSignature("invalid base64");
-    if s.len() % 4 != 0 || s.len() > 4096 {
+    if !s.len().is_multiple_of(4) || s.len() > 4096 {
         return Err(BAD);
     }
     let bytes = s.as_bytes();
@@ -160,8 +160,8 @@ pub fn verify_message(address: &Address, message: &[u8], signature_b64: &str) ->
     if !kind_ok {
         return Ok(false);
     }
-    let rec_id = RecoveryId::from_i32(i32::from(rec))
-        .map_err(|_| Error::InvalidSignature("recovery id"))?;
+    let rec_id =
+        RecoveryId::from_i32(i32::from(rec)).map_err(|_| Error::InvalidSignature("recovery id"))?;
     let sig = RecoverableSignature::from_compact(&raw[1..], rec_id)
         .map_err(|_| Error::InvalidSignature("malformed compact signature"))?;
     let digest = message_digest(address.network(), message);
@@ -177,4 +177,3 @@ pub fn verify_message(address: &Address, message: &[u8], signature_b64: &str) ->
     };
     Ok(expected.as_script() == address.script_pubkey())
 }
-

@@ -26,9 +26,7 @@ use bitcoin::script::PushBytesBuf;
 use bitcoin::secp256k1::Message;
 use bitcoin::sighash::{EcdsaSighashType, SighashCache};
 use bitcoin::transaction::Version;
-use bitcoin::{
-    Amount, PublicKey, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness,
-};
+use bitcoin::{Amount, PublicKey, Script, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness};
 
 /// Standard relay limit for the OP_RETURN payload.
 pub const MAX_OP_RETURN_BYTES: usize = 80;
@@ -89,7 +87,9 @@ pub fn build_payment(account: &Account, req: &PaymentRequest<'_>) -> Result<Paym
     }
     for u in req.utxos {
         if !account.owns_script(&u.script_pubkey) {
-            return Err(Error::InvalidInput("utxo script is not owned by this account"));
+            return Err(Error::InvalidInput(
+                "utxo script is not owned by this account",
+            ));
         }
         validate_prev_tx(u)?;
     }
@@ -195,7 +195,10 @@ fn prevout(psbt: &Psbt, i: usize) -> Result<TxOut> {
         .input
         .get(i)
         .ok_or(Error::InvalidPsbt("input index"))?;
-    let data = psbt.inputs.get(i).ok_or(Error::InvalidPsbt("input index"))?;
+    let data = psbt
+        .inputs
+        .get(i)
+        .ok_or(Error::InvalidPsbt("input index"))?;
     if let Some(prev) = &data.non_witness_utxo {
         if prev.compute_txid() != txin.previous_output.txid {
             return Err(Error::InvalidPsbt("non_witness_utxo txid mismatch"));
@@ -239,7 +242,7 @@ pub(crate) fn presented(psbt: &Psbt) -> Result<(Vec<InputRef>, Vec<OutputRef>)> 
 
 /// Parse a PSBT from hex (bounded).
 pub fn parse_psbt_hex(hex: &str) -> Result<Psbt> {
-    if hex.len() > 8 * 1024 * 1024 || hex.len() % 2 != 0 {
+    if hex.len() > 8 * 1024 * 1024 || !hex.len().is_multiple_of(2) {
         return Err(Error::InvalidPsbt("hex length"));
     }
     let bytes = decode_hex(hex).ok_or(Error::InvalidPsbt("not hex"))?;
@@ -251,7 +254,7 @@ pub fn psbt_to_hex(psbt: &Psbt) -> String {
 }
 
 pub(crate) fn decode_hex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     let b = s.as_bytes();
@@ -434,7 +437,11 @@ pub(crate) fn parse_multisig(ws: &Script) -> Option<(usize, Vec<PublicKey>)> {
     Some((m, keys))
 }
 
-fn sign_hash(account: &Account, sk_owner: &crate::keys::DerivedKey, hash: [u8; 32]) -> EcdsaSignature {
+fn sign_hash(
+    account: &Account,
+    sk_owner: &crate::keys::DerivedKey,
+    hash: [u8; 32],
+) -> EcdsaSignature {
     let sig = account
         .secp()
         .sign_ecdsa(&Message::from_digest(hash), sk_owner.secret());
@@ -473,13 +480,17 @@ pub(crate) fn sign_authorized(
         };
         let signed = sign_one_input(account, &mut psbt, i, ws_override)?;
         if !signed && explicit {
-            return Err(Error::InvalidPsbt("requested input is not signable by this account"));
+            return Err(Error::InvalidPsbt(
+                "requested input is not signable by this account",
+            ));
         }
     }
     if opts.finalize {
         for i in 0..n {
             if !finalize_input(&mut psbt, i)? {
-                return Err(Error::InvalidPsbt("cannot finalize: input lacks signatures"));
+                return Err(Error::InvalidPsbt(
+                    "cannot finalize: input lacks signatures",
+                ));
             }
         }
         let tx = psbt.extract_tx_unchecked_fee_rate();
@@ -553,9 +564,12 @@ fn sign_one_input(
             (None, None) => return Ok(false),
         };
         if ScriptBuf::new_p2wsh(&ws.wscript_hash()) != spk {
-            return Err(Error::InvalidPsbt("witness script does not match prevout script"));
+            return Err(Error::InvalidPsbt(
+                "witness script does not match prevout script",
+            ));
         }
-        let (_, keys) = parse_multisig(&ws).ok_or(Error::InvalidPsbt("unsupported witness script"))?;
+        let (_, keys) =
+            parse_multisig(&ws).ok_or(Error::InvalidPsbt("unsupported witness script"))?;
         let our = PublicKey::new(account.receive_key().public_key().0);
         if !keys.contains(&our) {
             return Ok(false);
@@ -634,14 +648,18 @@ fn finalize_input(psbt: &mut Psbt, i: usize) -> Result<bool> {
 }
 
 /// Sighash of input `i` for the cross-language known-answer tests.
-pub fn segwit_sighash_hex(tx: &Transaction, i: usize, script: &Script, value: Sats) -> Result<String> {
+pub fn segwit_sighash_hex(
+    tx: &Transaction,
+    i: usize,
+    script: &Script,
+    value: Sats,
+) -> Result<String> {
     let mut cache = SighashCache::new(tx);
     let h = cache
         .p2wpkh_signature_hash(i, script, Amount::from_sat(value.0), EcdsaSighashType::All)
         .map_err(|_| Error::InvalidPsbt("sighash"))?;
     Ok(encode_hex(&h.to_byte_array()))
 }
-
 
 /// Value of `OP_1`..`OP_16` (`0x51..=0x60`).
 fn pushnum(op: bitcoin::Opcode) -> Option<usize> {

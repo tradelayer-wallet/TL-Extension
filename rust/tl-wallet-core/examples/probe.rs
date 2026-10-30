@@ -20,7 +20,10 @@ fn main() {
     let origin = Origin::from_url("https://layerwallet.com").unwrap();
     let msg = b"TradeLayer BIP-137 known answer";
     let cap = SigningCapability::for_message(origin.clone(), acct.id(), 100, msg.to_vec());
-    let req = Requester { origin, network: Network::Btc };
+    let req = Requester {
+        origin,
+        network: Network::Btc,
+    };
     let sig = sign_message(cap, &req, &acct, 1, msg).unwrap();
     println!("RUST_SIG={sig}");
     println!("ADDR={}", acct.receive_address().encode().unwrap());

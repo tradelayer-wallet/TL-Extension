@@ -1,0 +1,5 @@
+name = "tl_wallet_core"
+defaultTargets = ["TlWalletCore"]
+
+[[lean_lib]]
+name = "TlWalletCore"

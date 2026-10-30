@@ -28,14 +28,16 @@ fn req<'a>(
 fn r1_change_goes_to_wallet_owned_address_only() {
     let to = stranger(Network::LtcTest);
     for mode in [ChangeMode::SameAsReceive, ChangeMode::InternalChain] {
-        let a =
-            Account::from_mnemonic(&mnemonic(PHRASE), Network::LtcTest, mode).unwrap();
+        let a = Account::from_mnemonic(&mnemonic(PHRASE), Network::LtcTest, mode).unwrap();
         let utxos = [utxo_for(&a, 1, 0, 100_000)];
         let plan = build_payment(&a, &req(&to, 30_000, &utxos)).unwrap();
         assert_eq!(plan.outputs.len(), 2);
         assert_eq!(plan.outputs[0].script.as_script(), to.script_pubkey());
         let change = &plan.outputs[1];
-        assert_eq!(change.script.as_script(), a.change_address().script_pubkey());
+        assert_eq!(
+            change.script.as_script(),
+            a.change_address().script_pubkey()
+        );
         assert!(a.owns_script(&change.script));
         assert_eq!(change.value, Sats(60_000));
         if mode == ChangeMode::InternalChain {
@@ -113,10 +115,8 @@ fn r4_message_signature_is_not_a_raw_hash_signature() {
     let secp = Secp256k1::new();
     let sig = Signature::from_compact(&raw[1..]).unwrap();
     let pk = a.receive_address();
-    let key = bitcoin::CompressedPublicKey::from_slice(&hex(
-        &a.info().unwrap().public_key_hex,
-    ))
-    .unwrap();
+    let key =
+        bitcoin::CompressedPublicKey::from_slice(&hex(&a.info().unwrap().public_key_hex)).unwrap();
     assert!(secp
         .verify_ecdsa(&Message::from_digest(legacy_digest), &sig, &key.0)
         .is_err());
@@ -164,7 +164,10 @@ fn r5_network_is_never_defaulted_or_switched() {
     assert!(Network::parse("").is_err());
     // tryPayment retried an address on the alternate network. Now a testnet address is simply
     // invalid on the explicit network, and vice versa.
-    let btc_test = account(Network::BtcTest).receive_address().encode().unwrap();
+    let btc_test = account(Network::BtcTest)
+        .receive_address()
+        .encode()
+        .unwrap();
     assert!(Address::parse(Network::LtcTest, &btc_test).is_err());
     assert!(Address::parse(Network::Btc, &btc_test).is_err());
     assert!(Address::parse(Network::BtcTest, &btc_test).is_ok());
@@ -197,7 +200,12 @@ fn r5b_address_strings_are_ambiguous_without_explicit_network() {
 fn r6_foreign_utxos_are_refused() {
     let a = account(Network::LtcTest);
     let to = stranger(Network::LtcTest);
-    let foreign = plain_utxo(9, 0, 100_000, stranger(Network::LtcTest).script_pubkey().to_owned());
+    let foreign = plain_utxo(
+        9,
+        0,
+        100_000,
+        stranger(Network::LtcTest).script_pubkey().to_owned(),
+    );
     assert_eq!(
         build_payment(&a, &req(&to, 30_000, &[foreign])).unwrap_err(),
         Error::InvalidInput("utxo script is not owned by this account")
@@ -356,7 +364,10 @@ fn r9_summary_does_not_hide_unknown_or_negative_fees() {
     assert_eq!(s.total_in, Some(Sats(100_000)));
     assert!(s.outputs[1].is_change);
     assert!(!s.outputs[0].is_change);
-    assert_eq!(s.outputs[0].address.as_deref(), Some(to.encode().unwrap().as_str()));
+    assert_eq!(
+        s.outputs[0].address.as_deref(),
+        Some(to.encode().unwrap().as_str())
+    );
     // unknown input amount -> fee unknown, not zero
     let mut p2 = plan.psbt.clone();
     p2.inputs[0].witness_utxo = None;
@@ -410,7 +421,10 @@ fn r10_mnemonic_import_validation() {
 fn r11_amounts_are_exact_decimals() {
     assert_eq!(Sats::from_coin_str("0.0001").unwrap(), Sats(10_000));
     assert_eq!(Sats::from_coin_str("0.0000546").unwrap(), Sats(5_460));
-    assert_eq!(Sats::from_coin_str("1.00000001").unwrap(), Sats(100_000_001));
+    assert_eq!(
+        Sats::from_coin_str("1.00000001").unwrap(),
+        Sats(100_000_001)
+    );
     // 0.1 + 0.2 style float errors cannot occur
     assert_eq!(
         Sats::from_coin_str("0.1")
@@ -420,17 +434,39 @@ fn r11_amounts_are_exact_decimals() {
         Sats::from_coin_str("0.3").unwrap()
     );
     for bad in [
-        "", ".", "1.", ".5", "-1", "+1", "1e3", "0.000000001", "1 ", " 1", "0x10", "1,5", "NaN",
-        "Infinity", "٣",
+        "",
+        ".",
+        "1.",
+        ".5",
+        "-1",
+        "+1",
+        "1e3",
+        "0.000000001",
+        "1 ",
+        " 1",
+        "0x10",
+        "1,5",
+        "NaN",
+        "Infinity",
+        "٣",
     ] {
-        assert!(Sats::from_coin_str(bad).is_err(), "{bad:?} must be rejected");
+        assert!(
+            Sats::from_coin_str(bad).is_err(),
+            "{bad:?} must be rejected"
+        );
     }
     assert_eq!(
         Sats::from_coin_str("184467440737.09551616").unwrap_err(),
         Error::AmountOverflow
     );
-    assert_eq!(Sats::from_coin_str("184467440737.09551615").unwrap(), Sats(u64::MAX));
-    assert_eq!(Sats(u64::MAX).checked_add(Sats(1)), Err(Error::AmountOverflow));
+    assert_eq!(
+        Sats::from_coin_str("184467440737.09551615").unwrap(),
+        Sats(u64::MAX)
+    );
+    assert_eq!(
+        Sats(u64::MAX).checked_add(Sats(1)),
+        Err(Error::AmountOverflow)
+    );
     assert_eq!(Sats(123_456_789).to_coin_string(), "1.23456789");
 }
 

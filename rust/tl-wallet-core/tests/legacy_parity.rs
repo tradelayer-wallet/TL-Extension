@@ -38,7 +38,10 @@ fn network_params_match_legacy_objects() {
         // legacy messagePrefix = <len byte> + text
         let mut prefix = vec![p.message_magic.len() as u8];
         prefix.extend_from_slice(p.message_magic.as_bytes());
-        assert_eq!(v[&format!("params.{name}.messagePrefixHex")], to_hex(&prefix));
+        assert_eq!(
+            v[&format!("params.{name}.messagePrefixHex")],
+            to_hex(&prefix)
+        );
     }
 }
 
@@ -48,7 +51,10 @@ fn derived_accounts_match_legacy_payments() {
     for n in Network::ALL {
         let a = account(n);
         let name = n.id();
-        assert_eq!(v[&format!("account.{name}.address")], a.info().unwrap().address);
+        assert_eq!(
+            v[&format!("account.{name}.address")],
+            a.info().unwrap().address
+        );
         let script = to_hex(a.receive_address().script_pubkey().as_bytes());
         assert_eq!(v[&format!("account.{name}.script")], script);
         assert_eq!(v[&format!("decode.{name}.script")], script);

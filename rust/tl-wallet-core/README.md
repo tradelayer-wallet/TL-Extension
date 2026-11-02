@@ -5,8 +5,9 @@ models of the accounting and authorization rules. Part of the Rust migration cha
 "TL-Extension: share pure wallet operations through WASM after vault/network migration review".
 
 Status: offline scaffold. It is not wired into the extension, nothing was signed with a real key,
-nothing was broadcast, no endpoint was contacted. Vault encryption and browser storage remain in
-JavaScript (see "Not ported").
+nothing was broadcast, no endpoint was contacted. The vault (legacy import, sealed format,
+migration state machine) is ported behind storage and randomness traits; the browser storage
+adapter and the UI stay in JavaScript (see "Vault" and "Not ported").
 
 ## Baseline and provenance
 
@@ -18,6 +19,8 @@ JavaScript (see "Not ported").
 | `background/background.js` | blob `dadd958b055ad2b663d940b50588d5d4934f63eb` (769 lines) |
 | `contentScript.js` | blob `cf4ba6cc876622fbff4e82103669ec1671af7be9` (212 lines) |
 | Also read | `components/SeedPhraseImport.js`, `components/SignTransaction.js`, `popup/popup.js` (consumers) |
+| Vault sources (same baseline content at `c8c2da4`) | `components/PasswordSetup.js` blob `52d4b5566119fb6af602e738efb5e5d48e7d8192`, `PasswordPrompt.js` `8877959cd214574bc1517d9eef8ee2225ec8dca4`, `ExposeSeed.js` `406e876680a9181cf6812836145dad04c7d6844c`, `ResetPass.js` `9ef7cb17ad0b198a23952ba18ff8039612f9545a`, `DelegatedSigner.js` `384fa100b103cb75e156b5f228bbb945c145656e`; `lib/walletUtils.js` as above; `components/Send.js` (caller of `checkPasswordMatch`) |
+| Legacy cipher library | `crypto-js` 4.2.0 (`package-lock.json`, integrity `sha512-KALDyEYg...`); parity ciphertexts come from that exact version |
 | Open PR #3 | "Harden seed/key encryption (C1), password checks (M1), network-correct signing (H2), BIP39 import validation (M5)" (open, not merged, not part of the baseline; vault migration is separate work) |
 
 ## What is ported
@@ -34,6 +37,10 @@ JavaScript (see "Not ported").
 | `message` | `signMessage` / `signString` | BIP-137 (see R4) |
 | `capability` | none (new) | Signing capability and its authorization predicates |
 | `provider`, `origin` | `contentScript.js` gate, `background.js` `PAGE_METHODS`, `isAllowedOrigin`, permissions, account selection, pending registry | Decisions only; no browser APIs |
+| `vault::legacy` | `CryptoJS.AES.encrypt(text, password)` in `PasswordSetup.js:34`, `ResetPass.js:44`, `walletUtils.js:332`; decrypts in `generateAddressFromSeed` (261), `ExposeSeed.js:28`, `ResetPass.js:35`, `walletUtils.js:869,963,1175`; DelegatedSigner PBKDF2 key | Import only: OpenSSL `Salted__` + EVP_BytesToKey(MD5, 1 iteration) + AES-256-CBC, byte-exact against crypto-js 4.2.0 |
+| `vault::format` | none (new) | Versioned sealed blob: scrypt or PBKDF2-SHA256, XChaCha20-Poly1305, header as AAD |
+| `vault::manager` | `PasswordSetup`, `PasswordPrompt` (unlock part), `ExposeSeed`, `ResetPass`, `checkPasswordMatch`, `getOrDeriveKeyPair`, `clearPrivateKeyCaches` | Create, unlock, migrate legacy -> sealed (state machine), change password, recover from backup, real password check |
+| `vault::store` | `localStorage` / `chrome.storage.local` use | `VaultStore` (get / compare-and-swap / keys) and `Random` traits, `MemoryStore`, test-only `CounterRandom` |
 
 `signMessage` keeps the page-visible call shape (message in, signature out) but the encoding
 changes (BIP-137 base64 65-byte recoverable signature instead of a DER-ish hex of
@@ -45,8 +52,29 @@ changes (BIP-137 base64 65-byte recoverable signature instead of a DER-ish hex o
   segwit v0 and legacy sighash, ECDSA/recoverable signing through `secp256k1`, `base58`, `bech32`,
   BIP32. Chosen so no cryptography or consensus encoding is reimplemented.
 * `bip39 = "2.2"` (`std` only): word list, checksum and PBKDF2 seed derivation. Cached offline.
+* Vault dependencies, all RustCrypto, all already in the offline cargo cache (`--locked --offline`
+  works), none hand-rolled:
+  * `aes 0.8` + `cbc 0.1`: AES-256-CBC with checked PKCS#7 unpadding, needed only to read legacy blobs.
+  * `md-5 0.10`: the MD5 inside OpenSSL `EVP_BytesToKey`, needed only to read legacy blobs (MD5 is
+    never used for anything new).
+  * `sha2 0.10` + `pbkdf2 0.12` (feature `hmac` only): PBKDF2-HMAC-SHA256 for the sealed format
+    option and for the DelegatedSigner key derivation check; SHA-256 for the migration fingerprint.
+  * `scrypt 0.11` (no default features, raw `scrypt()` function): the default memory-hard KDF.
+  * `chacha20poly1305 0.10` (`alloc`): XChaCha20-Poly1305 AEAD (24-byte nonce, pure software,
+    constant time, no AES-NI dependency in WASM).
+  * `zeroize 1`: `Zeroizing` buffers for derived keys and decrypted secrets.
+  * `subtle 2`: constant-time comparison of secrets (`Secret::ct_eq`).
+  * `base64 0.22` (`alloc`): the legacy and sealed text envelopes.
+  The lockfile grows from 28 to 57 packages; none pulls `getrandom`/`rand_core` (asserted by
+  `tests/hygiene.rs::lockfile_has_no_ambient_entropy_crates`, which keeps `wasm32` linking without
+  a `js` shim). `cargo deny` (rust/deny.toml unchanged: all new crates are MIT / Apache-2.0) and
+  `cargo audit` pass on this crate and on `wasm-smoke` against the locally cached advisory database
+  (not freshly fetched).
 * No JSON, HTTP, RNG, clock or threading crates. `tests/hygiene.rs` asserts the library sources
-  contain no `std::fs/net/env/thread/process`, clock, RNG, `unsafe`, `unwrap`, `expect` or `panic!`.
+  (including `src/vault/`) contain no `std::fs/net/env/thread/process`, clock, RNG, `unsafe`,
+  `unwrap`, `expect` or `panic!`.
+* Dev profile: the crypto crates above are built with `opt-level = 3` (`[profile.dev.package.*]`)
+  so the scrypt-based tests run in seconds; release builds are unaffected.
 * Build is `--locked --offline` from the local cargo cache. Whether those exact registry versions
   resolve on crates.io in CI was not checked from here.
 
@@ -82,6 +110,21 @@ Legend: **P** preserved contract, **R** repaired defect, **V** versioned protoco
 | U2 | U | Dogecoin transactions use version 2 as legacy bitcoinjs did; standardness on Dogecoin Core was not checked | | Unchanged | |
 | U3 | U | `MAINNET`/`TESTNET` mean LTC/LTCTEST in legacy; they are ambiguous in a multi-chain wallet | | Accepted only for the legacy bridge (`Network::parse_legacy_generic`) | `provider::connect_*` |
 | U4 | U | Taproot / witness v1 destinations and multisig other than P2WSH bare m-of-n are not supported | | Typed `UnsupportedAddress` | |
+| R16 | R | `checkPasswordMatch` returns `true` for every input (walletUtils.js:886-889); its caller `Send.js:25` also passes four arguments to a three-parameter function | Not on main; open PR #3 is titled as hardening password checks (M1), its diff was not reviewed here | `verify_password` must decrypt the vault; `check_password_match` also requires the seed to derive the expected address on the named network | `vault_migration::v_r1_check_password_match_is_real` |
+| R17 | R | Unauthenticated AES-CBC and no padding check in crypto-js: a wrong password usually yields an empty or malformed string but sometimes a short non-empty one, which the `if (decrypted)` checks accept (PasswordSetup.js:40-47, ExposeSeed.js:28-37, ResetPass.js:35-41, walletUtils.js:261-266 feeds any non-empty string to `mnemonicToSeedSync`, deriving a different wallet silently). crypto-js 4.2.0 returned `"/"` for the wrong password `wrong-28` on a seed blob (fixture `legacy.wrong_accepted.*`) | No | Sealed format is AEAD with the whole header authenticated: wrong password and any modified byte are `WrongPasswordOrTampered`. Legacy blobs are read with checked PKCS#7 and must decrypt to a canonical BIP-39 phrase | `vault_legacy::regression_wrong_password_that_crypto_js_accepted_is_refused`, `vault_format::every_bit_flip_is_rejected`, `vault_migration::v_r2_sealed_vault_never_returns_garbage` |
+| R18 | R | Password KDF is OpenSSL `EVP_BytesToKey` with MD5 and one iteration (PasswordSetup.js:34, ResetPass.js:44, walletUtils.js:332): a fast offline guess rate against any copy of the localStorage blob | No | scrypt N=2^15, r=8, p=1 by default (PBKDF2-SHA256 600 000 iterations as the alternative), parameters recorded in the authenticated header and bounded on read | `vault_migration::v_r3_new_vault_uses_a_recorded_memory_hard_kdf`, `vault_format::hostile_kdf_parameters_are_refused_before_any_work` |
+| R19 | R | `getOrDeriveKeyPair` caches `address.privateKey` per network under `encryptedPrivateKey:<net>:<path>` (walletUtils.js:892-914) and PasswordPrompt stores it as `encryptedKey` (PasswordPrompt.js:87-88). The cached value is not plaintext: it is `CryptoJS.AES.encrypt(base64(privateKey), password)` (walletUtils.js:331-332), i.e. a second ciphertext under the same weak scheme with a recognisable plaintext shape (44 base64 characters ending in `=`), which doubles the offline attack surface and outlives a password change until `clearPrivateKeyCaches` runs | Partly: `clearPrivateKeyCaches` is called on setup and reset | No derived key is ever persisted; keys are derived in memory from the unlocked seed; migration retirement deletes the legacy caches | `vault_migration::v_r4_no_derived_key_cache_is_persisted` |
+| R20 | R | `PasswordSetup` keeps an existing `encryptedSeed` and silently drops the seed phrase just entered (PasswordSetup.js:24-37): the user believes the new wallet exists while the old one is unlocked | No | `create` refuses with `AlreadyExists` when a legacy blob, vault, backup or record exists | `vault_migration::v_r5_create_never_overwrites_or_silently_keeps` |
+| R21 | R | An empty password is accepted at setup (PasswordSetup.js:17-35) although the unlock prompt rejects it (PasswordPrompt.js:24-27), leaving an unusable wallet | No | Empty password is `EmptyPassword` for create, seal, open and change; a legacy empty-password wallet can still be read once and migrated to a real password | `vault_migration::v_r6_empty_password_is_refused`, `legacy_wallet_with_empty_password_migrates_to_a_real_one` |
+| R22 | R | `ResetPass` re-encrypts whatever decrypted to a truthy string (ResetPass.js:35-47): with R17 a wrong "current password" can overwrite the seed with an encryption of garbage, with no backup and no read-back | No | `change_password` opens with the old password, seals, swaps the single key with compare-and-swap, reads it back and restores the previous blob if the read-back fails | `vault_migration::v_r7_change_password_is_atomic_and_verified` |
+| P5 | P | Legacy blob format: `base64("Salted__" ‖ salt8 ‖ AES-256-CBC(PKCS#7))`, key and IV from `EVP_BytesToKey(MD5, 1)` over the UTF-8 password; plaintext is the phrase, trimmed before use (walletUtils.js:262) | n/a | Read byte-exactly; stricter only in that PKCS#7 padding is verified (no honest blob is refused). Never written | `vault_legacy::fixtures_decrypt_byte_exact`, `test_encryptor_reproduces_crypto_js_blobs` |
+| V3 | V | New storage format: `tlvault:` + base64 of `TLVT` header (version, payload kind, network, KDF id and three parameters, salt, nonce) + XChaCha20-Poly1305 ciphertext; keys `vault.v1`, `vault.legacy_backup`, `vault.record`; `encryptedSeed` is removed at the end of a migration (popup.js:310-314 routes on its presence, so the JS side must read `vault.v1` / `vault.record` instead) | n/a | Versioned; unknown versions refused, versions below the recorded floor refused (`Downgrade`) | `vault_format::version_policy_rejects_downgrade_and_unknown_versions`, `vault_migration::version_floor_in_the_record_rejects_older_blobs` |
+| U5 | U | DelegatedSigner (DelegatedSigner.js:36-70) passes the PBKDF2 output, a `WordArray`, as the AES key. crypto-js then skips key derivation and supplies no IV, and throws `TypeError` in CBC before returning (verified with crypto-js 4.2.0 for both `encrypt` and `decrypt`; fixture `delegated.*`). `initialize()` therefore never reaches `saveEncryptedKey`, and no file in the repository imports the class. Its PBKDF2 parameters are SHA-256, 10 000 iterations, 32 bytes, salt = UTF-8 of the 32-character hex string | n/a | No second legacy format exists to import; `delegated_signer_key` documents the derivation and is parity-checked. Not repaired, because nothing it would protect exists | `vault_legacy::delegated_signer_key_matches_crypto_js_and_its_ciphertext_cannot_exist` |
+| U6 | U | Legacy phrases that are not canonical BIP-39 (checksum-less typos accepted by the old import, R10; extra spaces or capitals) | n/a | Not migrated: `InvalidSecret` / `NonCanonicalLegacyPhrase`, legacy data untouched, wallet keeps working through the legacy path. Canonicalising would derive a different seed (`mnemonicToSeedSync` uses the raw string), so the port refuses instead of guessing; the JS side needs a separate "export seed" path for these users | `vault_migration::non_canonical_or_invalid_legacy_plaintext_is_not_migrated` |
+| U7 | U | The migration record and version floor live in the same store as the blob. Anyone who can write the store can delete the record and lower the floor | n/a | AEAD still protects confidentiality and integrity of the seed; the floor only stops older or accidental writers. Deleting the sealed blob is an availability attack that the backup record recovers from | |
+| U8 | U | The backup record is the legacy ciphertext byte for byte, so it keeps the MD5/1-iteration protection for as long as it exists | n/a | Kept so a lost or damaged sealed blob can be rebuilt (`recover_from_backup`); `discard_backup` deletes it after proving the sealed blob holds the same secret. When to call it is a UI decision | `vault_migration::recovery_drill_lost_and_corrupted_sealed_blob` |
+| U9 | U | scrypt N=2^15 (32 MiB, a few hundred ms natively) was not timed inside an extension service worker or popup; PBKDF2 is available for hosts without the memory | | Parameters are data in the header, so the default can change without a format change | |
+| U10 | U | Passwords are used as typed (UTF-8 bytes, no Unicode normalisation), exactly as crypto-js did | | Unchanged, so legacy passwords keep working (fixture `seed_unicode_pw`) | |
 
 Already fixed on `main` before this port (no action, noted for the record): the provider layer
 requires an approved origin and an approved network for named networks, `ALLOW_DEVELOPMENT_ORIGINS`
@@ -104,6 +147,84 @@ approved, output multiset equal to the approved multiset, `sum(inputs) >= sum(ou
 Granting a capability is the act of user approval: only the approval UI may call
 `SigningCapability::for_*`. The crate cannot enforce that boundary by type; the JS/WASM binding
 must expose only "approve request id N" and never the constructor to page-reachable code.
+
+## Vault (`src/vault/`)
+
+Storage and randomness are injected (`VaultStore`, `Random`); there is no filesystem, clock or
+ambient RNG, so the module builds for `wasm32-unknown-unknown` and runs in a WASM host (see
+"WASM"). The caller owns the real adapters: a `chrome.storage.local` / `localStorage` store whose
+`compare_and_swap` is a read-compare-write inside one task, and a `Random` backed by
+`crypto.getRandomValues`. `CounterRandom` is a deterministic LCG for tests only.
+
+Storage keys:
+
+| Key | Holds |
+| --- | --- |
+| `encryptedSeed` | legacy CryptoJS blob (deleted only by the last migration step) |
+| `vault.legacy_backup` | byte-for-byte copy of the legacy blob, written before anything else |
+| `vault.v1` | sealed blob: `tlvault:` + base64(`TLVT` header 60 bytes ‖ XChaCha20-Poly1305 ciphertext ‖ tag) |
+| `vault.record` | `tlrec1;<phase>;<min_version>;<sha256 of the legacy blob or ->` |
+| `encryptedKey`, `encryptedPrivateKey:*` | legacy derived-key caches, deleted at retirement |
+
+Header (all authenticated as AAD): magic, version, payload kind, network, KDF id (1 scrypt,
+2 PBKDF2-SHA256), three KDF parameters, 16-byte salt, 24-byte nonce. Reads refuse, before any KDF
+work: bad envelope, version 0 or newer than this build, version below the record floor
+(`Downgrade`), unknown KDF, parameters outside the window (scrypt log N 10..20, r 1..16, p 1..4,
+at most 256 MiB; PBKDF2 1 000..4 000 000), another network or payload kind. The network is the
+"vault slot" label (the wallet derives every network from one seed), so a blob sealed for one
+network is not accepted in another network's slot.
+
+Migration (`VaultManager::migrate_step`, one transition per call, `migrate` loops):
+
+```
+(no record) --1--> BackedUp --2--> Written --3--> Verified --4--> Retired
+ 1  decrypt + validate legacy (canonical 12-word BIP-39), write backup, write record
+ 2  seal a new blob (reusing a staged blob that already opens), write it, write record
+ 3  read the sealed blob back from storage, open it, compare with the legacy secret, write record
+ 4  re-verify, delete the legacy key, delete the key caches, write record
+```
+
+Each storage write is one compare-and-swap on one key. The tests interrupt a full migration at
+each of its 9 writes, both before the write (`FailBefore`) and after it was applied but reported
+as failed (`ApplyThenFail`), and then after two interruptions in a row (81 combinations). In every
+case the state is recoverable (legacy blob, verified sealed blob or backup decrypts to the seed),
+`unlock` works with the password that belongs to the active source, and resuming reaches
+`Retired` with the backup equal to the original legacy blob. The legacy key is deleted only when
+the record says `Verified`, the backup equals it, and a fresh read of the sealed blob opens to the
+legacy secret. Other operations: `create` (refuses over anything existing), `unlock`,
+`verify_password`, `check_password_match(password, network, address)`, `change_password` (one
+swap, read-back, rollback), `abort_migration` (only while the legacy blob still exists),
+`recover_from_backup`, `discard_backup`.
+
+Recovery drill (`vault_migration::recovery_drill_lost_and_corrupted_sealed_blob`): the
+crypto-js-generated blob for the public `abandon ... about` mnemonic is migrated, the sealed blob
+is corrupted (unlock fails with a typed error), recovered from the backup, deleted outright
+(`Unreadable`), recovered again with a different new password, and every network's address is
+checked against `Account::from_mnemonic` after each stage.
+
+## Vault parity with crypto-js
+
+`scripts/vault-legacy-vectors.cjs` runs the real crypto-js 4.2.0 through the extension's exact
+calls (`CryptoJS.AES.encrypt(text, password).toString()`, and the DelegatedSigner PBKDF2 +
+`AES.encrypt(text, key)` pair) and writes `tests/fixtures/vault_legacy_vectors.txt`: eight
+synthetic blobs (the public BIP-39 mnemonic with ASCII, non-ASCII and empty passwords, a
+`base64(0x11 * 32)` key-cache blob, padding-boundary plaintexts of 0, 15 and 16 bytes, UTF-8),
+one wrong-password case crypto-js accepts, and the DelegatedSigner key and failure outcome. The one
+random input (the OpenSSL salt) is replaced by a deterministic stream so `--check` reproduces the
+file byte for byte; everything else is unmodified crypto-js. The script verifies the installed
+version and the SHA-256 of `crypto-js.js` (`ee02257f...9bbe`, from the tarball whose sha512
+integrity is in the repository's `package-lock.json`). crypto-js is not a dependency of the crate:
+
+```
+mkdir /tmp/legacy && cd /tmp/legacy && printf '{"private":true}' > package.json
+npm install --ignore-scripts crypto-js@4.2.0
+LEGACY_CRYPTOJS_DIR=/tmp/legacy node scripts/vault-legacy-vectors.cjs --check   # VAULT_VECTORS_OK
+```
+
+For this port the vectors were produced in a scratch folder outside the repository
+(`legacy-run/TL-Extension`, `npm ci --ignore-scripts` against a lockfile reduced to the one
+pinned package with the same integrity); `--check` printed `VAULT_VECTORS_OK` under Windows Node and
+under Node 18 in WSL.
 
 ## Commands
 
@@ -132,6 +253,10 @@ The script refuses to run if `lib/walletUtils.js` is not the pinned blob. Fixtur
 public test keys (the BIP39 `abandon ... about` mnemonic, the secp256k1 generator multiples).
 
 `examples/probe.rs` prints the inputs used for the Bitcoin Core known-answer check.
+
+`cargo test --locked` runs 112 tests (56 before the vault module: `vault_legacy` 7, `vault_format` 14,
+`vault_migration` 34, plus one new hygiene test). Vault crypto-js vectors: see "Vault parity with
+crypto-js"; the WASM host run is `wasm-smoke/scripts/wasm-smoke.mjs` (see "WASM").
 
 ## Lean 4 (`lean/`, Lean v4.34.1, core only, no Mathlib)
 
@@ -163,12 +288,56 @@ and absent in the model); the stable sort and the outpoint/script bytes are not 
 signing itself (ECDSA, sighash) is not modelled. The proofs are about the decision logic, not about
 the cryptography.
 
+### Vault model (`TlWalletCore/Vault.lean`)
+
+Models `VaultManager::migrate_step` / `unlock` / `unlock_source` and `format::open`'s version
+policy. Each storage write of a step is its own action (`Act`: `writeBackup`, `recBackedUp`,
+`writeVault`, `recWritten`, `recVerified`, `deleteLegacy`, `recRetired`), applied only when its
+guard holds, so `Reach` covers every interleaving, interruption and skipped action; `ReachEnv`
+adds the environment replacing, corrupting or deleting the sealed blob at any time.
+
+Theorems (axioms limited to `propext` and `Quot.sound` by `AxiomCheck.lean`):
+
+* `every_reachable_state_recoverable`: in every state reachable by any sequence of migration
+  actions and sealed-blob damage, the legacy blob or the backup still decrypts to the original secret.
+* `legacy_removed_only_after_verified_readback`: the legacy blob is absent only if the record is
+  `verified` or `retired`, the backup equals it, and the sealed blob read back opens to the original
+  secret. `legacy_removed_implies_backup` is the same without trusting the sealed blob.
+  `record_implies_backup`: no record exists before the backup does.
+* `unlock_sound`, `unlock_wrong_key`: unlock returns a stored secret, only under the key its blob
+  was sealed with; a key matching no stored blob unlocks nothing.
+  `unlock_returns_original`: in any migration-reachable state unlock can only return the original
+  secret (no garbage, no other value), whatever key is tried.
+* `openBlob_some`, `openBlob_wrong_key`, `right_key_opens`, `downgrade_rejected`,
+  `unknown_version_rejected`, `version_zero_rejected`, `unlock_sealed_downgrade`: opening needs
+  the matching key and a version in `[floor, current]` and at least 1; older-than-floor, newer and
+  zero versions are refused.
+* Support lemmas: `ref_eq`, `act_base`, `act_strong`, `reach_strong`, `reachEnv_base`.
+
+Concrete `example ... := by decide` vectors cover the snapshot after each prefix of the seven
+actions, the finished state, out-of-order actions being no-ops, replaying a finished migration,
+unlock before/after verification and the version cases. Rust mirrors: 
+`vault_migration::interruption_snapshots_match_the_lean_model` (interrupt at each of the 9 writes,
+both failure modes, compare `Snapshot` with the model; writes 6 and 7, the key-cache purges, are
+the two writes the model leaves out), `unlock_vectors_match_the_lean_model`,
+`happy_path_step_by_step`, `vault_format::version_policy_rejects_downgrade_and_unknown_versions`.
+
+Where the vault model abstracts: passwords and secrets are `Nat`s and a blob is
+`(key, secret, version)`; authentication is "the key matches", so cipher strength, the KDF, header
+AAD coverage (tested exhaustively in Rust by flipping every bit) and base64 are not modelled; the
+legacy blob is assumed not to change mid-migration (Rust refuses a changed blob via the SHA-256
+fingerprint, `LegacyChanged`); the version floor is a fixed parameter (its ratchet is tested in
+Rust); `discard_backup` and `change_password` are not modelled.
+
 ## Not ported (and why)
 
-* Vault: CryptoJS AES encryption of seed and keys, password prompts and `checkPasswordMatch`
-  (a stub returning `true` in legacy), `getOrDeriveKeyPair` caching in `localStorage`,
-  `clearPrivateKeyCaches`. Vault migration needs backup, atomic writes, wrong-password/tamper tests
-  and a recovery drill with synthetic keys; open PR #3 touches this.
+* Vault, the parts that are not logic: the `chrome.storage` / `localStorage` adapter implementing
+  `VaultStore`, the `crypto.getRandomValues` adapter implementing `Random`, the password
+  prompts and the React components. `getOrDeriveKeyPair`'s caching is deliberately not ported
+  (R19), `clearPrivateKeyCaches` survives only as the purge inside migration step 4, and
+  `lib/walletUtils.js`'s exported `decryptPrivateKey` (817-835, explicit-IV CryptoJS call shape,
+  called nowhere in the repository) is not imported. Open PR #3 also touches the vault; this port
+  is independent of it and was not rebased onto it.
 * Browser storage and messaging: `chrome.storage`, `localStorage`, popup windows, runtime messages,
   `window.js`, React components.
 * Network I/O: `fetchUTXOs`, `broadcastTransaction`, `sendBTC` (BlockCypher), `buildPsbtLocally`
@@ -180,11 +349,21 @@ the cryptography.
 
 ## Remaining gaps (honest list)
 
-* `wasm32-unknown-unknown` build was **not** run: the target is not installed in the offline
-  toolchain. The library avoids std I/O/clock/thread/RNG (`tests/hygiene.rs`), but `secp256k1-sys`
-  needs a C toolchain for wasm32 and that was not exercised. No `wasm-bindgen` layer exists.
+* The `wasm32-unknown-unknown` library build and the WASM smoke run pass with the vault included
+  (see "WASM"). No `wasm-bindgen` layer exists, and the smoke ABI passes no secrets across the boundary.
+* Vault: no adapter exists for `chrome.storage.local`, so single-key compare-and-swap atomicity
+  across popup, service worker and several windows is an assumption of the trait that the adapter
+  must honour; nothing here exercised a real browser. The extension's own routing
+  (`popup.js:310-314`, `Send.js`, `PasswordPrompt.js`) still reads `encryptedSeed` and the
+  CryptoJS blob, so nothing is migrated until the JS side calls the module.
+* Vault: timing of scrypt N=2^15 on target browsers (U9), password strength policy (only
+  "non-empty" is enforced), padding of the sealed plaintext (the ciphertext length reveals the
+  phrase length), and secret-zeroizing across a WASM boundary are open.
+* Vault: only legacy blobs that decrypt to a canonical 12-word BIP-39 phrase migrate (U6).
+  The legacy blob is assumed not to change while a migration is in flight; if it does the
+  migration stops with `LegacyChanged` and must be aborted explicitly.
 * CI workflow `.github/workflows/rust-tl-wallet-core.yml` has not run (nothing was pushed). Its Node
-  parity step and the Lean job are untested in GitHub's environment.
+  parity step, the new vault-vector step (it runs `npm install crypto-js@4.2.0` there) and the Lean job are untested in GitHub's environment.
 * Multisig finalize assumes bare m-of-n P2WSH with keys in script order; signatures from the
   account's receive key only. Hardware/other signer shapes, SIGHASH variants, RBF/locktime policy and
   fee estimation from real vsizes beyond the `FeePolicy::PerVbyte` helper are not covered.
@@ -193,15 +372,18 @@ the cryptography.
 * The Lean model proves decision logic, not equivalence of the Rust code to the model; the
   correspondence is by construction plus the shared vectors.
 * No consumer was changed: wiring into `background.js` / `walletUtils.js` is a later task and
-  depends on the vault migration and on adopting the BIP-137 format (V1).
+  depends on a JS storage adapter for the vault module and on adopting the BIP-137 format (V1).
 
 ## WASM
 
 Verified 2026-10-30 (Rust 1.90.0, `wasm32-unknown-unknown`, clang 18 for libsecp256k1):
 `cargo build --locked --lib --target wasm32-unknown-unknown` succeeds, and
-`wasm-smoke/` (a raw-ABI `cdylib`, 208,343 bytes in release) runs under Node's
+`wasm-smoke/` (a raw-ABI `cdylib`, 338,009 bytes in release (208,343 before the vault)) runs under Node's
 WebAssembly host: `node wasm-smoke/scripts/wasm-smoke.mjs <wasm>` prints
 `WASM_SMOKE_OK` after checking address validation (valid, uppercase, mixed case, bad
 checksum, wrong network, unknown network) and BIP-39 phrases for zero and `0xff`
-entropy against the native test vectors. The smoke ABI is for verification only; an
+entropy against the native test vectors, then `tlw_vault_selftest()` runs the vault inside the host
+(crypto-js blob decrypt, scrypt + XChaCha20-Poly1305 seal/open with wrong-password and tamper
+refusal, and a full legacy-to-sealed migration over `MemoryStore`) and must return 1. Re-verified
+2026-11-02 with the vault in: `wasm-smoke.sh` printed `WASM_SMOKE_OK 338009 bytes`. The smoke ABI is for verification only; an
 extension binding still needs a reviewed generator and secret-zeroizing buffers.

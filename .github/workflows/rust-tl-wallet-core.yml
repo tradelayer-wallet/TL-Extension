@@ -27,6 +27,13 @@ jobs:
       - name: Legacy parity vectors are reproducible from the pinned legacy files
         working-directory: rust/tl-wallet-core
         run: node scripts/compare-legacy.cjs --check
+      - name: Vault legacy vectors are reproducible from crypto-js 4.2.0
+        working-directory: rust/tl-wallet-core
+        run: |
+          mkdir -p "$RUNNER_TEMP/legacy"
+          (cd "$RUNNER_TEMP/legacy" && printf '{"name":"legacy-run","version":"0.0.0","private":true}' > package.json \
+            && npm install --ignore-scripts --no-audit --no-fund crypto-js@4.2.0)
+          LEGACY_CRYPTOJS_DIR="$RUNNER_TEMP/legacy" node scripts/vault-legacy-vectors.cjs --check
       - name: Clippy
         working-directory: rust/tl-wallet-core
         run: cargo clippy --locked --all-targets -- -D warnings

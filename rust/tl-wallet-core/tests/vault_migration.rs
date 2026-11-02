@@ -808,3 +808,78 @@ fn scrypt_default_family_end_to_end() {
     assert_eq!(m.migrate(OLD_PW, NEW_PW).unwrap(), Phase::Retired);
     assert_eq!(phrase_of(&m, NEW_PW), PHRASE);
 }
+
+// ---- Lean model vectors ----------------------------------------------------------------------------
+
+/// `snap (run pp (steps.take k) (init0 lv))` for k = 0..=7 in lean/TlWalletCore/Vault.lean.
+fn lean_snapshot(acts: usize) -> Snapshot {
+    match acts {
+        0 => snap(true, false, false, None),
+        1 => snap(true, true, false, None),
+        2 => snap(true, true, false, Some(Phase::BackedUp)),
+        3 => snap(true, true, true, Some(Phase::BackedUp)),
+        4 => snap(true, true, true, Some(Phase::Written)),
+        5 => snap(true, true, true, Some(Phase::Verified)),
+        6 => snap(false, true, true, Some(Phase::Verified)),
+        7 => snap(false, true, true, Some(Phase::Retired)),
+        _ => unreachable!(),
+    }
+}
+
+/// Rust writes: 0 backup, 1 record, 2 vault, 3 record, 4 record, 5 legacy delete, 6 and 7 key
+/// cache purges (not modelled: they leave the modelled state unchanged), 8 final record.
+fn model_acts_after_writes(writes: usize) -> usize {
+    match writes {
+        0..=6 => writes,
+        7 | 8 => 6,
+        _ => 7,
+    }
+}
+
+#[test]
+fn interruption_snapshots_match_the_lean_model() {
+    for mode in [FaultMode::FailBefore, FaultMode::ApplyThenFail] {
+        for n in 0..9 {
+            let mut m = mgr(FaultStore::new(legacy_store(PHRASE, OLD_PW)));
+            m.store_mut().arm(n, mode);
+            assert!(m.migrate(OLD_PW, NEW_PW).is_err());
+            m.store_mut().disarm();
+            let applied = if mode == FaultMode::FailBefore {
+                n
+            } else {
+                n + 1
+            };
+            assert_eq!(
+                m.snapshot().unwrap(),
+                lean_snapshot(model_acts_after_writes(applied)),
+                "{mode:?} at write {n}"
+            );
+        }
+    }
+    // the uninterrupted run ends in the model's final state
+    let mut m = mgr(legacy_store(PHRASE, OLD_PW));
+    m.migrate(OLD_PW, NEW_PW).unwrap();
+    assert_eq!(m.snapshot().unwrap(), lean_snapshot(7));
+}
+
+/// Lean `unlock pp 1/2 (run pp (steps.take k) ...)` vectors: the legacy password works until the
+/// sealed blob is verified, the new password afterwards, never the other one.
+#[test]
+fn unlock_vectors_match_the_lean_model() {
+    // (model acts taken, writes applied, legacy password unlocks, new password unlocks)
+    let table = [
+        (0usize, 0usize, true, false),
+        (4, 4, true, false),
+        (5, 5, false, true),
+        (7, 9, false, true),
+    ];
+    for (acts, writes, old_ok, new_ok) in table {
+        let mut m = mgr(FaultStore::new(legacy_store(PHRASE, OLD_PW)));
+        m.store_mut().arm(writes, FaultMode::FailBefore);
+        let _ = m.migrate(OLD_PW, NEW_PW);
+        m.store_mut().disarm();
+        assert_eq!(m.snapshot().unwrap(), lean_snapshot(acts));
+        assert_eq!(m.unlock(OLD_PW).is_ok(), old_ok, "acts {acts}");
+        assert_eq!(m.unlock(NEW_PW).is_ok(), new_ok, "acts {acts}");
+    }
+}

@@ -24,3 +24,23 @@ open TlWalletCore
 #print axioms resolve_approved
 #print axioms resolve_no_switch
 #print axioms resolve_none_unique
+open TlWalletCore.Vault
+#print axioms openBlob_some
+#print axioms openBlob_wrong_key
+#print axioms downgrade_rejected
+#print axioms unknown_version_rejected
+#print axioms version_zero_rejected
+#print axioms right_key_opens
+#print axioms ref_eq
+#print axioms act_base
+#print axioms act_strong
+#print axioms reach_strong
+#print axioms reachEnv_base
+#print axioms every_reachable_state_recoverable
+#print axioms legacy_removed_only_after_verified_readback
+#print axioms legacy_removed_implies_backup
+#print axioms record_implies_backup
+#print axioms unlock_sound
+#print axioms unlock_wrong_key
+#print axioms unlock_returns_original
+#print axioms unlock_sealed_downgrade

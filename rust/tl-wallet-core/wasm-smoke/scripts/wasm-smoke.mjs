@@ -44,4 +44,6 @@ assert.equal(mnemonic(new Uint8Array(16)),
 assert.equal(mnemonic(new Uint8Array(16).fill(0xff)),
   'zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong');
 
+assert.equal(w.tlw_vault_selftest(), 1);
+
 console.log('WASM_SMOKE_OK', bytes.length, 'bytes');

@@ -81,3 +81,78 @@ pub unsafe extern "C" fn tlw_mnemonic(entropy: *const u8, out: *mut u8, cap: usi
     std::ptr::copy_nonoverlapping(phrase.as_ptr(), out, phrase.len());
     phrase.len() as i32
 }
+
+const FIXTURE: &str = include_str!("../../tests/fixtures/vault_legacy_vectors.txt");
+const FIXTURE_PASSWORD: &str = "correct horse battery staple";
+const FIXTURE_PHRASE: &str =
+    "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+
+fn fixture_blob() -> Option<&'static str> {
+    FIXTURE
+        .lines()
+        .find_map(|l| l.strip_prefix("legacy.seed.blob="))
+        .map(str::trim_end)
+}
+
+/// Runs the vault end to end inside the WASM host: legacy CryptoJS decrypt of a crypto-js
+/// generated blob, scrypt + XChaCha20-Poly1305 seal/open (wrong password and a flipped byte are
+/// refused), then the full legacy-to-sealed migration over the in-memory store. Returns 1 when
+/// every stage passes, otherwise the negative number of the failing stage.
+#[no_mangle]
+pub extern "C" fn tlw_vault_selftest() -> i32 {
+    use tl_wallet_core::vault::format::{open, seal};
+    use tl_wallet_core::vault::manager::LEGACY_SEED_KEY;
+    use tl_wallet_core::vault::{
+        CounterRandom, Kdf, MemoryStore, PayloadKind, Phase, VaultManager,
+    };
+    let Some(blob) = fixture_blob() else {
+        return -1;
+    };
+    let kind = PayloadKind::MnemonicPhrase;
+    match tl_wallet_core::vault::legacy::decrypt_cryptojs_passphrase(blob, FIXTURE_PASSWORD) {
+        Ok(s) if s.as_str() == Some(FIXTURE_PHRASE) => {}
+        _ => return -2,
+    }
+    let Ok(sealed) = seal(
+        &mut CounterRandom::new(1),
+        "wasm pw",
+        FIXTURE_PHRASE.as_bytes(),
+        Kdf::FLOOR_SCRYPT,
+        Network::Ltc,
+        kind,
+    ) else {
+        return -3;
+    };
+    match open(&sealed, "wasm pw", Network::Ltc, kind, 1) {
+        Ok(s) if s.as_str() == Some(FIXTURE_PHRASE) => {}
+        _ => return -4,
+    }
+    if open(&sealed, "other", Network::Ltc, kind, 1).is_ok() {
+        return -5;
+    }
+    let mut bytes = sealed.clone().into_bytes();
+    let last = bytes.len() - 5;
+    bytes[last] = if bytes[last] == b'A' { b'B' } else { b'A' };
+    if let Ok(t) = String::from_utf8(bytes) {
+        if open(&t, "wasm pw", Network::Ltc, kind, 1).is_ok() {
+            return -6;
+        }
+    }
+    let mut store = MemoryStore::new();
+    store.put_raw(LEGACY_SEED_KEY, blob);
+    let Ok(mut m) = VaultManager::new(
+        store,
+        CounterRandom::new(2),
+        Network::Ltc,
+        Kdf::FLOOR_SCRYPT,
+    ) else {
+        return -7;
+    };
+    if m.migrate(FIXTURE_PASSWORD, "wasm pw") != Ok(Phase::Retired) {
+        return -8;
+    }
+    match m.unlock("wasm pw") {
+        Ok(s) if s.as_str() == Some(FIXTURE_PHRASE) => 1,
+        _ => -9,
+    }
+}

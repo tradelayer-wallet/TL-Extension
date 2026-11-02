@@ -2,7 +2,8 @@
 //!
 //! No threads, no filesystem, no clock and no entropy are used: time (`now`) and randomness
 //! (mnemonic entropy) are injected by the caller, which keeps the crate usable from
-//! `wasm32` bindings. Vault encryption and browser storage are deliberately not here.
+//! `wasm32` bindings. The vault ([`vault`]) takes storage and randomness as traits; browser
+//! storage itself stays in the extension.
 #![forbid(unsafe_code)]
 
 pub mod address;
@@ -17,6 +18,7 @@ pub mod network;
 pub mod origin;
 pub mod provider;
 pub mod tx;
+pub mod vault;
 
 pub use address::{Address, AddressKind};
 pub use amount::Sats;

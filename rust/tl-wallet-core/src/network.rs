@@ -11,6 +11,10 @@ pub enum Network {
     BtcTest,
     Doge,
     DogeTest,
+    /// Litecoin Core `-regtest` (`rltc` bech32). Local test chains only.
+    LtcRegtest,
+    /// Bitcoin Core `-regtest` (`bcrt` bech32). Local test chains only.
+    BtcRegtest,
 }
 
 /// Which single-key address type the wallet derives for the network (legacy `generateAddressFromSeed`).
@@ -133,7 +137,19 @@ const DOGE_TEST: NetworkParams = NetworkParams {
     is_test: true,
 };
 
+const LTC_REGTEST: NetworkParams = NetworkParams {
+    id: "LTCREGTEST",
+    bech32_hrp: Some("rltc"),
+    ..LTC_TEST
+};
+const BTC_REGTEST: NetworkParams = NetworkParams {
+    id: "BTCREGTEST",
+    bech32_hrp: Some("bcrt"),
+    ..BTC_TEST
+};
+
 impl Network {
+    /// The six networks of the legacy extension (legacy parity vectors cover exactly these).
     pub const ALL: [Network; 6] = [
         Network::Ltc,
         Network::LtcTest,
@@ -143,6 +159,10 @@ impl Network {
         Network::DogeTest,
     ];
 
+    /// Local regression-test chains. Not in the legacy extension; used by the desktop wallet's
+    /// regtest end-to-end runs.
+    pub const REGTEST: [Network; 2] = [Network::LtcRegtest, Network::BtcRegtest];
+
     pub fn params(self) -> &'static NetworkParams {
         match self {
             Network::Ltc => &LTC,
@@ -151,6 +171,8 @@ impl Network {
             Network::BtcTest => &BTC_TEST,
             Network::Doge => &DOGE,
             Network::DogeTest => &DOGE_TEST,
+            Network::LtcRegtest => &LTC_REGTEST,
+            Network::BtcRegtest => &BTC_REGTEST,
         }
     }
 
@@ -173,6 +195,8 @@ impl Network {
             "BTCTEST" | "BITCOIN-TESTNET" => Network::BtcTest,
             "DOGE" | "DOGECOIN" => Network::Doge,
             "DOGETEST" | "DOGECOIN-TESTNET" => Network::DogeTest,
+            "LTCREGTEST" | "LITECOIN-REGTEST" => Network::LtcRegtest,
+            "BTCREGTEST" | "BITCOIN-REGTEST" => Network::BtcRegtest,
             _ => return Err(Error::UnknownNetwork(label.chars().take(32).collect())),
         };
         Ok(n)

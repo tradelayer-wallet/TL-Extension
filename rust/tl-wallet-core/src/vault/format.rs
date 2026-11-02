@@ -65,6 +65,8 @@ fn network_tag(n: Network) -> u8 {
         Network::BtcTest => 4,
         Network::Doge => 5,
         Network::DogeTest => 6,
+        Network::LtcRegtest => 7,
+        Network::BtcRegtest => 8,
     }
 }
 
@@ -76,6 +78,8 @@ fn network_from_tag(t: u8) -> Result<Network, VaultError> {
         4 => Network::BtcTest,
         5 => Network::Doge,
         6 => Network::DogeTest,
+        7 => Network::LtcRegtest,
+        8 => Network::BtcRegtest,
         _ => return Err(VaultError::Malformed("unknown network tag")),
     })
 }

@@ -27,7 +27,7 @@ adapter and the UI stay in JavaScript (see "Vault" and "Not ported").
 
 | Rust module | Legacy source | Notes |
 | --- | --- | --- |
-| `network` | `litecoinNetwork` ... `dogecoinTestnet`, `networkAliases`, `networkPaths` (walletUtils 28-153), `normalizeNetworkId` (background 83) | Explicit `Network` enum; constants copied; per-network dust threshold added |
+| `network` | `litecoinNetwork` ... `dogecoinTestnet`, `networkAliases`, `networkPaths` (walletUtils 28-153), `normalizeNetworkId` (background 83) | Explicit `Network` enum; constants copied; per-network dust threshold added. Two non-legacy ids, `BTCREGTEST` (`bcrt`) and `LTCREGTEST` (`rltc`), reuse the testnet key versions and paths for local regtest chains; they are outside `Network::ALL` (`Network::REGTEST`), tested in `tests/regtest_network.rs` |
 | `amount` | float `Math.round(amount * 1e8)` | `Sats(u64)`, checked ops, exact decimal parse |
 | `address` | `payments.p2wpkh/p2pkh/p2sh/p2wsh`, `address.fromOutputScript` | Encode/validate per explicit network; LTC/DOGE prefixes on top of `bitcoin::base58` and `bech32` |
 | `keys` | `generateAddressFromSeed`, `generateMnemonic`, `SeedPhraseImport` | BIP39 import validation, BIP32/84/44 derivation, injected entropy, redacted `Debug`, key erased on drop |

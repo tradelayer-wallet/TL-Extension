@@ -4,7 +4,8 @@ Pure, I/O-free wallet logic of the TradeLayer browser extension, ported to Rust 
 models of the accounting and authorization rules. Part of the Rust migration charter row
 "TL-Extension: share pure wallet operations through WASM after vault/network migration review".
 
-Status: offline scaffold. It is not wired into the extension, nothing was signed with a real key,
+Status: library and test suite; `../tl-extension-app` wires the vault, unlock and signing into the
+extension's original popup through WebAssembly (milestone 1). Nothing was signed with a real key,
 nothing was broadcast, no endpoint was contacted. The vault (legacy import, sealed format,
 migration state machine) is ported behind storage and randomness traits; the browser storage
 adapter and the UI stay in JavaScript (see "Vault" and "Not ported").
@@ -350,12 +351,13 @@ Rust); `discard_backup` and `change_password` are not modelled.
 ## Remaining gaps (honest list)
 
 * The `wasm32-unknown-unknown` library build and the WASM smoke run pass with the vault included
-  (see "WASM"). No `wasm-bindgen` layer exists, and the smoke ABI passes no secrets across the boundary.
-* Vault: no adapter exists for `chrome.storage.local`, so single-key compare-and-swap atomicity
-  across popup, service worker and several windows is an assumption of the trait that the adapter
-  must honour; nothing here exercised a real browser. The extension's own routing
-  (`popup.js:310-314`, `Send.js`, `PasswordPrompt.js`) still reads `encryptedSeed` and the
-  CryptoJS blob, so nothing is migrated until the JS side calls the module.
+  (see "WASM"). No `wasm-bindgen` layer exists; the smoke ABI passes no secrets, the extension
+  binding in `../tl-extension-app/wasm` does (JSON requests that it zeroes after use).
+* Vault: the extension binding (`../tl-extension-app`) implements `VaultStore` over the popup's
+  `localStorage` (a synchronous read-compare-write in one task) and `Random` over
+  `crypto.getRandomValues`, and a browser run opens a legacy crypto-js vault and migrates it. There
+  is no `chrome.storage.local` adapter, so the service worker and several popup windows writing
+  at once are not covered; the popup (`popup.js` routing, unlock, sign) now goes through the module.
 * Vault: timing of scrypt N=2^15 on target browsers (U9), password strength policy (only
   "non-empty" is enforced), padding of the sealed plaintext (the ciphertext length reveals the
   phrase length), and secret-zeroizing across a WASM boundary are open.
@@ -371,8 +373,10 @@ Rust); `discard_backup` and `change_password` are not modelled.
   Lean theorems; parity covers the vectors in `tests/fixtures/legacy_vectors.txt` only.
 * The Lean model proves decision logic, not equivalence of the Rust code to the model; the
   correspondence is by construction plus the shared vectors.
-* No consumer was changed: wiring into `background.js` / `walletUtils.js` is a later task and
-  depends on a JS storage adapter for the vault module and on adopting the BIP-137 format (V1).
+* Consumer: `../tl-extension-app` replaces `lib/walletUtils.js` key functions and the inline vault
+  code in the popup (see its `PORT_PLAN.md`); `background.js` still does its own provider
+  decisions (the `provider` and `origin` modules are not wired). BIP-137 (V1) is adopted by that
+  build. `tx::presented` is `pub` so the binding can build capabilities from a PSBT.
 
 ## WASM
 

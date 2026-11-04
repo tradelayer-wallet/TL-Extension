@@ -216,7 +216,7 @@ fn prevout(psbt: &Psbt, i: usize) -> Result<TxOut> {
 
 /// Inputs and outputs exactly as the PSBT presents them; the capability is checked against
 /// this, not against request fields.
-pub(crate) fn presented(psbt: &Psbt) -> Result<(Vec<InputRef>, Vec<OutputRef>)> {
+pub fn presented(psbt: &Psbt) -> Result<(Vec<InputRef>, Vec<OutputRef>)> {
     if psbt.unsigned_tx.input.len() > MAX_PSBT_IO || psbt.unsigned_tx.output.len() > MAX_PSBT_IO {
         return Err(Error::InvalidPsbt("too many inputs or outputs"));
     }

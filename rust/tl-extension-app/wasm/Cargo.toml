@@ -1,0 +1,22 @@
+[package]
+name = "tl-extension-wasm"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+description = "Raw-ABI WebAssembly binding of tl-wallet-core for the TradeLayer MV3 extension: vault, unlock, message and PSBT signing"
+license = "ISC"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tl-wallet-core = { path = "../../tl-wallet-core" }
+bitcoin = { version = "0.32", default-features = false, features = ["std", "secp-recovery"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"

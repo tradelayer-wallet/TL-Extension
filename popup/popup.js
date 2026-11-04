@@ -22,6 +22,7 @@ import ResetPass from '../components/ResetPass';
 import SiteApproval from '../components/SiteApproval';
 import MultisigApproval from '../components/MultisigApproval';
 import { addMultisigAddress, buildUnsignedPSBT } from '../lib/walletUtils';
+import { vaultExists } from '../lib/vault';
 import {
   setAddress,
   setApprovalRequest,
@@ -307,11 +308,10 @@ const App = () => {
       });
     }
 
-    const encryptedSeed = localStorage.getItem('encryptedSeed');
     if (stepParam) {
       dispatch(setStep(parseInt(stepParam, 10)));
     } else {
-      dispatch(setStep(encryptedSeed ? 6 : 1));
+      dispatch(setStep(vaultExists() ? 6 : 1));
     }
 
     chrome.storage.local.get(['addresses', ACTIVE_ACCOUNTS_KEY], (result) => {

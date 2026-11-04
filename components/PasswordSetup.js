@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
-import CryptoJS from 'crypto-js';
 import { useDispatch, useSelector } from 'react-redux';
 import { setPassword, setSeedPhrase } from '../store/store'; // Assuming you have an action to set the password
 import { setStep } from '../store/store';
-import { clearPrivateKeyCaches } from '../lib/walletUtils';
+import { createVault } from '../lib/vault';
 
 const PasswordSetup = () => {
   let [password, setPasswordValue] = useState('');
@@ -20,31 +19,20 @@ const PasswordSetup = () => {
       setPasswordError('Passwords do not match. Please try again.');
       return;
     }
-    setConfirmationPasswordValue('')    
-    let encryptedSeed = localStorage.getItem('encryptedSeed');
-    
-    // If there's no encrypted seed, encrypt the seedPhrase and store it
-    if (!encryptedSeed || encryptedSeed.length === 0) {
-      if (!seedPhrase || seedPhrase.length === 0) {
-        alert('Seed phrase not available.');
-        return;  // If seed phrase is empty, prevent further processing
-      }
-
-      // Encrypt the seedPhrase and store it in localStorage
-      encryptedSeed = CryptoJS.AES.encrypt(seedPhrase, password).toString();
-      localStorage.setItem('encryptedSeed', encryptedSeed);  // Store the encrypted seed in localStorage
-      clearPrivateKeyCaches();
+    setConfirmationPasswordValue('')
+    if (!seedPhrase || seedPhrase.length === 0) {
+      alert('Seed phrase not available.');
+      return;  // If seed phrase is empty, prevent further processing
     }
 
-    // Decrypt the seed phrase using the entered password
-    const bytes = CryptoJS.AES.decrypt(encryptedSeed, password);
+    // Create the vault (encrypts and stores the seed phrase) and check it opens with this password
+    const created = createVault(password, seedPhrase);
     setPasswordValue('')
-    const serializedSeed = bytes.toString(CryptoJS.enc.Utf8);
-    if (serializedSeed) {
+    if (created.ok) {
       dispatch(setSeedPhrase(null));
       dispatch(setStep(6)); // Proceed to Step 6 (Password prompt) after successful decryption
     } else {
-      alert('Incorrect password. Please try again.');
+      alert(created.message);
     }
   };
 

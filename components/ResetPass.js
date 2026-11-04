@@ -1,8 +1,7 @@
 import React, { useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { setStep } from '../store/store'; // Import setStep action
-import CryptoJS from 'crypto-js'; // Import CryptoJS for decryption and encryption
-import { clearPrivateKeyCaches } from '../lib/walletUtils';
+import { changePassword } from '../lib/vault';
 
 const ResetPassword = () => {
   const dispatch = useDispatch();
@@ -13,13 +12,6 @@ const ResetPassword = () => {
   const confirmNewPasswordRef = useRef('');
 
   const handlePasswordReset = () => {
-    const encryptedSeed = localStorage.getItem('encryptedSeed'); // Retrieve the encrypted seed from localStorage
-
-    if (!encryptedSeed) {
-      alert('Encrypted seed not found.');
-      return;
-    }
-
     // Get current, new, and confirm new passwords from refs
     const currentPassword = currentPasswordRef.current.value;
     const newPassword = newPasswordRef.current.value;
@@ -31,21 +23,12 @@ const ResetPassword = () => {
       return;
     }
 
-    // Decrypt the seed phrase using the current password
-    const bytes = CryptoJS.AES.decrypt(encryptedSeed, currentPassword);
-    const decrypted = bytes.toString(CryptoJS.enc.Utf8);
-
-    if (!decrypted) {
-      alert('Incorrect current password. Please try again.');
+    // Re-encrypt the seed phrase under the new password
+    const changed = changePassword(currentPassword, newPassword);
+    if (!changed.ok) {
+      alert(changed.message);
       return;
     }
-
-    // Encrypt the seed phrase with the new password
-    const encryptedSeedWithNewPassword = CryptoJS.AES.encrypt(decrypted, newPassword).toString();
-
-    // Save the new encrypted seed to localStorage
-    localStorage.setItem('encryptedSeed', encryptedSeedWithNewPassword);
-    clearPrivateKeyCaches();
 
     // Clear password refs
     currentPasswordRef.current.value = '';

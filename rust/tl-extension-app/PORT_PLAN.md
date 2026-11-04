@@ -146,7 +146,7 @@ invalid BIP-39 phrase is refused at password setup (R10); wrong passwords never 
 
 ## 6. Milestone 1 results
 
-See `README.md` for commands. Native: 11 tests (`wasm/tests/ops.rs`); core crate unchanged apart
+See `README.md` for commands. Native: 13 tests (`wasm/tests/ops.rs`); core crate unchanged apart
 from `tx::presented` becoming `pub`. Node: `scripts/core-node-test.mjs` (the ABI host with an
 in-memory Storage). Browser: `scripts/e2e-browser.mjs` in Chrome for Testing 157 over CDP.
 

@@ -143,6 +143,68 @@ fn legacy_vault_opens_and_is_migrated_on_unlock() {
     );
     assert!(ok(&again));
     assert!(again.get("migration").is_none());
+    // that later unlock confirmed the sealed vault and dropped the crypto-js backup
+    assert_eq!(again["backup_discarded"], json!(true));
+    assert!(s.0.borrow().raw("vault.legacy_backup").is_none());
+    let third = call(
+        &s,
+        json!({"op": "unlock", "password": LEGACY_PASSWORD, "network": "LTCTEST"}),
+    );
+    assert_eq!(third["address"], u["address"]);
+    assert!(third.get("backup_discarded").is_none());
+}
+
+#[test]
+fn a_backup_that_does_not_match_the_vault_is_kept() {
+    let s = Shared::default();
+    s.0.borrow_mut().put_raw("encryptedSeed", LEGACY_BLOB);
+    let u = call(
+        &s,
+        json!({"op": "unlock", "password": LEGACY_PASSWORD, "network": "LTCTEST"}),
+    );
+    assert_eq!(u["migration"]["phase"], json!("Retired"));
+    // a damaged backup no longer decrypts: unlock works, the backup stays for inspection
+    let mut damaged = LEGACY_BLOB.to_string();
+    damaged.replace_range(20..24, "AAAA");
+    s.0.borrow_mut().put_raw("vault.legacy_backup", &damaged);
+    let again = call(
+        &s,
+        json!({"op": "unlock", "password": LEGACY_PASSWORD, "network": "LTCTEST"}),
+    );
+    assert!(ok(&again), "{again}");
+    assert_eq!(again["backup_discarded"], json!(false));
+    assert_eq!(
+        s.0.borrow().raw("vault.legacy_backup"),
+        Some(damaged.as_str())
+    );
+}
+
+#[test]
+fn a_password_change_after_migration_drops_the_backup_first() {
+    let s = Shared::default();
+    s.0.borrow_mut().put_raw("encryptedSeed", LEGACY_BLOB);
+    let u = call(
+        &s,
+        json!({"op": "unlock", "password": LEGACY_PASSWORD, "network": "LTCTEST"}),
+    );
+    assert_eq!(u["migration"]["phase"], json!("Retired"));
+    let wrong = call(
+        &s,
+        json!({"op": "change_password", "old_password": "bad", "new_password": "next"}),
+    );
+    assert_eq!(wrong["ok"], json!(false));
+    assert!(s.0.borrow().raw("vault.legacy_backup").is_some());
+    let r = call(
+        &s,
+        json!({"op": "change_password", "old_password": LEGACY_PASSWORD, "new_password": "next"}),
+    );
+    assert!(ok(&r), "{r}");
+    assert_eq!(r["backup_discarded"], json!(true));
+    assert!(s.0.borrow().raw("vault.legacy_backup").is_none());
+    assert_eq!(
+        call(&s, json!({"op": "expose_seed", "password": "next"}))["phrase"],
+        json!(ABANDON)
+    );
 }
 
 #[test]
@@ -204,6 +266,10 @@ fn legacy_change_password_migrates_under_the_new_password() {
         )["ok"],
         json!(false)
     );
+    // the backup is under the old password, which is never presented again: dropped here
+    assert_eq!(r["backup_discarded"], json!(true));
+    assert!(s.0.borrow().raw("vault.legacy_backup").is_none());
+    assert!(s.0.borrow().raw("encryptedSeed").is_none());
 }
 
 #[test]

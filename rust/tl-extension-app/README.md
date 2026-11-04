@@ -18,7 +18,7 @@ folder; npm is installed only in a copy outside the clone (`npm ci --ignore-scri
 `legacy-run/TL-Extension/build-full`, from the repository's own `package.json` and lockfile).
 
 ```
-# native tests, lints (11 tests; run through the shared rust.sh)
+# native tests, lints (13 tests; run through the shared rust.sh)
 rust.sh $C/tl-extension-app/wasm test --locked --offline
 rust.sh $C/tl-extension-app/wasm clippy --locked --offline --all-targets -- -D warnings
 rust.sh $C/tl-extension-app/wasm clippy --locked --offline --lib --target wasm32-unknown-unknown -- -D warnings
@@ -56,7 +56,7 @@ locally and no packet leaves the machine. All keys and phrases are synthetic or 
 | Unlock with a wrong password | legacy alert "Incorrect password or corrupted data", no wallet |
 | Import the `abandon ... about` phrase | address `tltc1q6rz28...pesrjxk`, the address in `tl-wallet-core/tests/fixtures/legacy_vectors.txt` |
 | Import a phrase with a bad checksum | refused at password setup, nothing stored |
-| Legacy crypto-js blob in `localStorage.encryptedSeed` (fixture from crypto-js 4.2.0) | popup routes to the unlock prompt, opens to the same address, migrates in place (`encryptedSeed` removed, `vault.legacy_backup` equals the old blob, record `retired`) |
+| Legacy crypto-js blob in `localStorage.encryptedSeed` (fixture from crypto-js 4.2.0) | popup routes to the unlock prompt, opens to the same address, migrates in place (`encryptedSeed` removed, `vault.legacy_backup` equals the old blob, record `retired`); the next unlock drops `vault.legacy_backup` |
 | Provider on a local page: `connect` | approval popup (step 17) shows the page origin; Approve returns the account |
 | `signMessage` | approval popup (step 13) shows the message; the BIP-137 signature recovers the account public key; a wrong password is refused and Reject reaches the page |
 | `signPsbt` | step 16 with the legacy fee summary; the returned final transaction passes an independent BIP143 ECDSA check (Node + `@noble/curves`) and its txid matches |

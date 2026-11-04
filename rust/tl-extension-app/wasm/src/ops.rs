@@ -218,8 +218,30 @@ fn unlock<S: VaultStore, R: Random>(mgr: &mut VaultManager<S, R>, req: &Value) -
         if let Value::Object(m) = &mut out {
             m.insert("migration".into(), migration);
         }
+    } else if let Some(discarded) = drop_legacy_backup(mgr, password, password) {
+        if let Value::Object(m) = &mut out {
+            m.insert("backup_discarded".into(), json!(discarded));
+        }
     }
     Ok(out)
+}
+
+/// The legacy backup is encrypted with crypto-js's single-round MD5 key derivation, so keeping
+/// it keeps the weak ciphertext on disk. It is dropped at the first call after a completed
+/// migration that opens the sealed vault (the confirmation that the sealed vault works);
+/// `discard_backup` re-checks that the backup and the sealed vault hold the same seed before it
+/// deletes. Returns `None` when there is no backup to drop, otherwise whether it was dropped; a
+/// failure keeps the backup and never fails the calling operation.
+fn drop_legacy_backup<S: VaultStore, R: Random>(
+    mgr: &mut VaultManager<S, R>,
+    backup_password: &str,
+    vault_password: &str,
+) -> Option<bool> {
+    let snap = mgr.snapshot().ok()?;
+    if !snap.backup || snap.phase != Some(Phase::Retired) {
+        return None;
+    }
+    Some(mgr.discard_backup(backup_password, vault_password).is_ok())
 }
 
 fn check_password<S: VaultStore, R: Random>(mgr: &VaultManager<S, R>, req: &Value) -> Res<Value> {
@@ -244,13 +266,24 @@ fn change_password<S: VaultStore, R: Random>(
 ) -> Res<Value> {
     let old = str_field(req, "old_password")?;
     let new = str_field(req, "new_password")?;
-    match mgr.unlock_source()? {
+    // The backup is under the password the migration started from. Drop it while that password
+    // is known: before a sealed change, and right after a migration under a new password.
+    let discarded = match mgr.unlock_source()? {
         UnlockSource::Legacy => {
             mgr.migrate(old, new)?;
+            drop_legacy_backup(mgr, old, new)
         }
-        UnlockSource::Sealed => mgr.change_password(old, new)?,
-    }
-    Ok(json!({}))
+        UnlockSource::Sealed => {
+            mgr.unlock(old)?;
+            let discarded = drop_legacy_backup(mgr, old, old);
+            mgr.change_password(old, new)?;
+            discarded
+        }
+    };
+    Ok(match discarded {
+        Some(d) => json!({ "backup_discarded": d }),
+        None => json!({}),
+    })
 }
 
 /// Unlock and derive the account for `network`, the first step of every signing op.

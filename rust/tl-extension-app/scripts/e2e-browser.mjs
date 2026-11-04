@@ -1,7 +1,7 @@
 // Drives the built extension in Chrome for Testing over CDP (Node 24, no dependencies beyond
 // the signature check in the install given by --node-modules):
 //   create wallet, import wallet, unlock (testnet address view), legacy crypto-js vault
-//   import + migration, and provider requests from a local page: connect, signMessage,
+//   import + migration (backup dropped at the next unlock), and provider requests from a local page: connect, signMessage,
 //   signPsbt, signTransaction. Synthetic keys only; the browser resolver is blocked for every
 //   host except loopback, so nothing leaves the machine.
 //
@@ -476,6 +476,10 @@ async function main() {
   await setValue(pop2, '.password-prompt-input', LEGACY_PASSWORD);
   await clickButton(pop2, 'Submit');
   await bodyHas(pop2, 'Balance and Positions');
+  storage = await evaluate(pop2, `JSON.stringify(Object.fromEntries(Object.entries(localStorage)))`).then(JSON.parse);
+  assert.equal(storage['vault.legacy_backup'], undefined, 'the unlock after migration drops the crypto-js backup');
+  assert.ok(storage['vault.v1'].startsWith('tlvault:'));
+  log('legacy: the next unlock confirmed the sealed vault and dropped the crypto-js backup');
   await waitFor(pop2, `!!document.querySelector('.settings-button button')`, 'settings button');
   await evaluate(pop2, `document.querySelector('.settings-button button').click(); true`);
   await bodyHas(pop2, 'Settings');
